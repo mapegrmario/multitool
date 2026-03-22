@@ -11,7 +11,7 @@ import getpass
 import pwd
 from pathlib import Path
 
-VERSION = "4.1"
+VERSION = "1.0 Beta"
 
 # ── Benutzer & Pfade ──────────────────────────────────────────────────────────
 def get_original_user() -> str:
@@ -70,9 +70,12 @@ THEMES = {
 
 DEFAULT_SETTINGS = {
     "theme": "light", "font_size": 10,
+    "ui_font_size": 10,
     "default_wipe_method": "quick", "smart_interval_days": 1,
     "notifications": True, "backup_target": str(USER_HOME / "Backups"),
     "log_retention_days": 30,
+    "window_size": "1400x900",
+    "custom_fg": "", "custom_accent": "", "custom_bg": "",
 }
 
 def load_settings() -> dict:

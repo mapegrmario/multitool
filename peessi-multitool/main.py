@@ -94,7 +94,7 @@ try:
     from gui_base       import GuiBase
     from gui_drives     import DrivesTabs
     from gui_system     import (DashboardTab, SystemTab, NetworkTab,
-                                LogsTab, SettingsTab, AboutTab)
+                                LogsTab, SettingsTab, AboutTab, HilfeTab)
 except ImportError as e:
     print(f"FEHLER: Modul konnte nicht geladen werden: {e}")
     print(f"Installationsverzeichnis: {INSTALL_DIR}")
@@ -173,6 +173,7 @@ class App:
         self.logs_tab      = LogsTab(self.nb_main, self)
         self.settings_tab  = SettingsTab(self.nb_main, self)
         self.about_tab     = AboutTab(self.nb_main, self)
+        self.hilfe_tab     = HilfeTab(self.nb_main, self)
 
         # Statusleiste
         tk.Frame(self.root, bg=T["border"], height=1).pack(fill='x')
@@ -196,7 +197,7 @@ class App:
         save_settings(self.settings)
         # Alle Tab-Instanzen informieren
         for tab in [self.dashboard_tab, self.drives_tab, self.system_tab,
-                    self.network_tab, self.logs_tab, self.settings_tab, self.about_tab]:
+                    self.network_tab, self.logs_tab, self.settings_tab, self.about_tab, self.hilfe_tab]:
             tab.theme = self.theme
         self.settings_tab.apply_theme()
         self.settings_tab.rebuild_log_colors()

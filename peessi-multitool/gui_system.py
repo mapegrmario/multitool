@@ -17,6 +17,7 @@ import hashlib
 import datetime
 import threading
 import subprocess
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog, scrolledtext
 from pathlib import Path
@@ -29,6 +30,26 @@ from smart_engine import query_smart, is_failed
 from wipe_engine import WipeEngine
 from security import SecurityManager
 from gui_base import GuiBase
+
+
+def _bind_mousewheel(canvas):
+    """Bindet Mausrad-Scrolling an Canvas – aktiviert nur wenn Maus drüber."""
+    def _on_enter(e):
+        canvas.bind_all("<MouseWheel>",
+            lambda ev: canvas.yview_scroll(int(-1*(ev.delta/120)), "units"))
+        canvas.bind_all("<Button-4>",
+            lambda ev: canvas.yview_scroll(-1, "units"))
+        canvas.bind_all("<Button-5>",
+            lambda ev: canvas.yview_scroll(1, "units"))
+    def _on_leave(e):
+        try:
+            canvas.unbind_all("<MouseWheel>")
+            canvas.unbind_all("<Button-4>")
+            canvas.unbind_all("<Button-5>")
+        except Exception:
+            pass
+    canvas.bind("<Enter>", _on_enter)
+    canvas.bind("<Leave>", _on_leave)
 
 
 class DashboardTab(GuiBase):
@@ -54,6 +75,7 @@ class DashboardTab(GuiBase):
         inner.bind("<Configure>", lambda e: canvas.configure(
             scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(win, width=e.width))
+        _bind_mousewheel(canvas)
 
         grid = tk.Frame(inner, bg=T["bg"])
         grid.pack(fill='both', expand=True, padx=16, pady=16)
@@ -441,29 +463,56 @@ class SystemTab(GuiBase):
     def _build_optimizer(self, nb):
         self.make_shell_tab(nb,
             "⚡ Optimierer",
-            "Kernel-Tuning (BBR, Swappiness 10), 8 GB Swap-Datei, Firefox Low-Memory-Policies.\n"
-            "Für ältere AMD/Intel-Hardware.  ⚠️ Benötigt Root. Neustart empfohlen.",
+            "Kernel-Tuning (BBR falls verfügbar, Swappiness), dynamische Swap-Datei,\n"
+            "Firefox Low-Memory-Policies (nur wenn Firefox installiert).\n"
+            "Funktioniert auf allen Debian/Ubuntu/Mint-Systemen.  ⚠️ Benötigt Root. Neustart empfohlen.",
             "Optimieren",
-            ("bash -c 'echo \"=== 1. Kernel-Tuning ===\"; "
-             "cat > /etc/sysctl.d/99-peessi-optimizer.conf << EOF\n"
-             "vm.swappiness = 10\nvm.vfs_cache_pressure = 50\n"
-             "net.core.default_qdisc = fq\nnet.ipv4.tcp_congestion_control = bbr\n"
-             "vm.dirty_ratio = 10\nvm.dirty_background_ratio = 5\nEOF\n"
-             "sysctl --system > /dev/null && echo \"✓ Kernel optimiert.\"; "
-             "echo; echo \"=== 2. 8 GB Swap ===\"; "
-             "swapoff -a; [ -f /swapfile ] && rm /swapfile; "
-             "dd if=/dev/zero of=/swapfile bs=1M count=8192 status=progress; "
-             "chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile; "
-             "grep -q /swapfile /etc/fstab "
-             "|| echo \"/swapfile none swap sw 0 0\" >> /etc/fstab; "
-             "echo \"✓ Swap aktiv.\"; "
-             "echo; echo \"=== 3. Firefox ===\"; "
-             "mkdir -p /etc/firefox/policies; "
-             "echo '{\"policies\":{\"Preferences\":{"
+            ("bash -c '"
+             "echo \"=== 1. Kernel-Tuning ===\"; "
+             "CONF=/etc/sysctl.d/99-peessi-optimizer.conf; "
+             "{"
+             "echo \"vm.swappiness = 10\"; "
+             "echo \"vm.vfs_cache_pressure = 50\"; "
+             "echo \"vm.dirty_ratio = 10\"; "
+             "echo \"vm.dirty_background_ratio = 5\"; "
+             "echo \"net.core.default_qdisc = fq\"; "
+             "if modprobe tcp_bbr 2>/dev/null && grep -q bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then "
+             "  echo \"net.ipv4.tcp_congestion_control = bbr\"; "
+             "  echo \"✓ BBR TCP-Modul verfuegbar und aktiviert.\"; "
+             "else "
+             "  echo \"# BBR nicht verfuegbar (Kernel-Modul fehlt), cubic beibehalten\"; "
+             "  echo \"⚠ BBR nicht verfuegbar – Standard-TCP bleibt aktiv.\"; "
+             "fi; "
+             "} | tee $CONF > /dev/null; "
+             "grep -v '^echo\\|^if\\|^else\\|^fi' $CONF > /tmp/sysctl_clean.conf && mv /tmp/sysctl_clean.conf $CONF; "
+             "sysctl --system > /dev/null && echo \"✓ Kernel-Parameter gesetzt.\"; "
+             "echo; echo \"=== 2. Swap-Datei (dynamisch) ===\"; "
+             "RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo); "
+             "if [ $RAM_MB -le 2048 ]; then SWAP_MB=4096; "
+             "elif [ $RAM_MB -le 4096 ]; then SWAP_MB=4096; "
+             "elif [ $RAM_MB -le 8192 ]; then SWAP_MB=8192; "
+             "else SWAP_MB=4096; fi; "
+             "FREE_KB=$(df / | awk 'NR==2{print $4}'); "
+             "FREE_MB=$((FREE_KB/1024)); "
+             "if [ $FREE_MB -lt $((SWAP_MB+1024)) ]; then "
+             "  echo \"⚠ Nicht genug freier Speicher fuer ${SWAP_MB}MB Swap (frei: ${FREE_MB}MB). Swap uebersprungen.\"; "
+             "else "
+             "  swapoff -a 2>/dev/null; [ -f /swapfile ] && rm /swapfile; "
+             "  dd if=/dev/zero of=/swapfile bs=1M count=$SWAP_MB status=progress; "
+             "  chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile; "
+             "  grep -q /swapfile /etc/fstab || echo \"/swapfile none swap sw 0 0\" >> /etc/fstab; "
+             "  echo \"✓ ${SWAP_MB}MB Swap aktiv (RAM: ${RAM_MB}MB).\"; "
+             "fi; "
+             "echo; echo \"=== 3. Firefox (optional) ===\"; "
+             "if command -v firefox >/dev/null 2>&1 || [ -d /etc/firefox ]; then "
+             "  mkdir -p /etc/firefox/policies; "
+             "  printf '{\"policies\":{\"Preferences\":{"
              "\"browser.tabs.unloadOnLowMemory\":true,"
              "\"browser.low_commit_space_threshold_mb\":2048}}}' "
-             "> /etc/firefox/policies/policies.json && echo \"✓ Firefox-Policies gesetzt.\"; "
-             "echo; echo \"✅ Optimierung abgeschlossen.\"'")
+             "  > /etc/firefox/policies/policies.json && echo \"✓ Firefox Low-Memory-Policies gesetzt.\"; "
+             "else echo \"ℹ Firefox nicht installiert – uebersprungen.\"; fi; "
+             "echo; echo \"✅ Optimierung abgeschlossen.\"'"
+             )
         )
 
     # ── Prozesse ─────────────────────────────────────────────────────────────
@@ -1138,40 +1187,6 @@ sync; sleep 1; systemctl poweroff
         except Exception as e:
             self.log_to(self.einmal_log, f"Fehler: {e}\n")
 
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Peeßi's System Multitool v4.1
-Modul: gui_system.py  –  Alle nicht-Laufwerks-Tabs:
-  Dashboard, System (Pflege/Optimierer/Prozesse/Dienste/Boot/BIOS/Update-Shutdown),
-  Netzwerk, Logs & Diagnose, Einstellungen, Über
-"""
-
-import os
-import re
-import pwd
-import time
-import shutil
-import socket
-import hashlib
-import datetime
-import threading
-import subprocess
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog, scrolledtext
-from pathlib import Path
-from typing import List, Optional
-from shlex import quote as shlex_quote
-
-from config import (ORIGINAL_USER, USER_HOME, VERSION,
-                    THEMES, load_settings, save_settings)
-from smart_engine import query_smart, is_failed
-from wipe_engine import WipeEngine
-from security import SecurityManager
-from gui_base import GuiBase
-
-
-
 class NetworkTab(GuiBase):
     def __init__(self, nb_main, app):
         super().__init__(app.root, app.settings, app.theme, app._log_widgets)
@@ -1307,31 +1322,44 @@ class NetworkTab(GuiBase):
     def _refresh_connections(self):
         for row in self.conn_tree.get_children():
             self.conn_tree.delete(row)
+        import re as _re
         try:
-            r = subprocess.run(['ss', '-tunp'], capture_output=True, text=True)
-            for line in r.stdout.splitlines()[1:]:
+            # ss -tunp: Netid State Recv-Q Send-Q Local-Address:Port Peer-Address:Port Process
+            r = subprocess.run(['ss', '-tunp'], capture_output=True, text=True, timeout=10)
+            lines = r.stdout.splitlines()
+            # Erste Zeile ist Header – überspringen
+            for line in lines[1:]:
+                line = line.rstrip()
+                if not line:
+                    continue
                 parts = line.split()
                 if len(parts) < 5:
                     continue
-                proto  = parts[0]
-                state  = parts[1]
-                local  = parts[4] if len(parts) > 4 else ""
-                remote = parts[5] if len(parts) > 5 else ""
-                proc   = parts[6] if len(parts) > 6 else ""
-                m = re.search(r'pid=(\d+),fd', proc)
-                if m:
-                    pid = m.group(1)
-                    try:
-                        pname = subprocess.check_output(
-                            ['ps', '-p', pid, '-o', 'comm='], timeout=2
-                        ).decode().strip()
-                        proc = f"{pid}/{pname}"
-                    except Exception:
-                        proc = pid
-                self.conn_tree.insert('', 'end',
-                    values=(proto, local, remote, state, proc))
-        except Exception:
-            pass
+                proto = parts[0]
+                state = parts[1]
+                # Local und Remote: suche addr:port Muster (IPv4, IPv6, wildcard)
+                addr_re = _re.compile(
+                    r'(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?[0-9a-fA-F:]+\]?|\*|0\.0\.0\.0)'
+                    r':(\d+|\*)')
+                all_addrs = addr_re.findall(line)
+                # findall gibt nur die Port-Gruppe zurück – wir brauchen den ganzen Match
+                full_addrs = addr_re.finditer(line)
+                addr_list  = [m.group(0) for m in full_addrs]
+                local  = addr_list[0] if len(addr_list) > 0 else ""
+                remote = addr_list[1] if len(addr_list) > 1 else ""
+                # Prozess: users:(("name",pid=N,fd=M))
+                proc_info = ""
+                pm = _re.search(r'users:\(\("([^"]+)",pid=(\d+)', line)
+                if pm:
+                    proc_info = f"{pm.group(2)}/{pm.group(1)}"
+                self.conn_tree.insert("", "end",
+                    values=(proto, local, remote, state, proc_info))
+        except Exception as e:
+            # Fehler sicher ins iface_detail-Log schreiben (existiert immer)
+            try:
+                self.log_to(self.iface_detail, f"Verbindungen-Fehler: {e}\n")
+            except Exception:
+                pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1385,77 +1413,76 @@ class NetworkTab(GuiBase):
                        *self.wlan_tree.get_children())).pack(side='left', padx=4)
 
     def _read_wlan_passwords(self):
+        """
+        WLAN-Passwörter auslesen – basiert auf wlan_passw-auslesen.py (Version 2).
+        Nutzt nmcli --show-secrets; funktioniert als Root via shell=True.
+        """
         self.wlan_tree.delete(*self.wlan_tree.get_children())
         self.clear_log(self.wlan_log)
-        self.log_to(self.wlan_log, "Lese WLAN-Verbindungen..." + chr(10))
+        self.log_to(self.wlan_log, "Lese WLAN-Verbindungen...\n")
+
+        def _run(cmd: str) -> str:
+            try:
+                r = subprocess.run(cmd, capture_output=True, text=True, shell=True, timeout=15)
+                return r.stdout.strip()
+            except Exception:
+                return ""
 
         def worker():
             import re as _re
             results = []
             try:
-                r = subprocess.run(
-                    ['nmcli', '-t', '-f', 'NAME', 'connection', 'show'],
-                    capture_output=True, text=True)
-                names = [n for n in r.stdout.strip().splitlines() if n and n != 'lo']
+                # Alle Verbindungsnamen holen
+                out = _run("nmcli -t -f NAME connection show")
+                if not out:
+                    self.root.after(0, lambda: self.log_to(self.wlan_log,
+                        "❌ Keine Verbindungen gefunden. Läuft der NetworkManager?\n"))
+                    return
+
+                names = [n for n in out.splitlines() if n and n != "lo"]
+                self.root.after(0, lambda c=len(names): self.log_to(
+                    self.wlan_log, f"  {c} Verbindungen gefunden, prüfe WLAN...\n"))
 
                 for name in names:
-                    # DBUS_SESSION_BUS_ADDRESS noetig damit nmcli Secrets lesen kann
-                    import os as _os
-                    env = dict(_os.environ)
-                    # Versuche DBUS-Adresse des Original-Users zu ermitteln
-                    from config import ORIGINAL_USER as _USER
-                    try:
-                        uid_r = subprocess.run(
-                            ['id', '-u', _USER], capture_output=True, text=True)
-                        uid = uid_r.stdout.strip()
-                        dbus = f"unix:path=/run/user/{uid}/bus"
-                        env['DBUS_SESSION_BUS_ADDRESS'] = dbus
-                    except Exception:
-                        pass
-                    r2 = subprocess.run(
-                        ['nmcli', '--show-secrets', 'connection', 'show', name],
-                        capture_output=True, text=True, env=env)
-                    details = r2.stdout
+                    # Details inkl. Passwort holen – als Root direkt via nmcli
+                    safe_name = name.replace('"', '\\"')
+                    details = _run(f'nmcli --show-secrets connection show "{safe_name}"')
 
-                    if '802-11-wireless' not in details:
+                    if not details or "802-11-wireless" not in details:
                         continue
 
-                    psk     = ''
-                    sec     = ''
-                    bssid   = ''
+                    # Passwort per Regex (robust gegenüber Leerzeichen)
+                    psk_m = _re.search(r"802-11-wireless-security\.psk:\s*(.+)", details)
+                    sec_m = _re.search(r"802-11-wireless-security\.key-mgmt:\s*(.+)", details)
+                    bss_m = _re.search(r"802-11-wireless\.seen-bssids:\s*(.+)", details)
 
-                    # PSK: Leerzeichen zwischen Doppelpunkt und Wert variabel
-                    for line in details.splitlines():
-                        line = line.strip()
-                        if line.startswith('802-11-wireless-security.psk:'):
-                            val = line.split(':', 1)[1].strip()
-                            if val and val not in ('<hidden>', '--', ''):
-                                psk = val
-                        elif line.startswith('802-11-wireless-security.key-mgmt:'):
-                            sec = line.split(':', 1)[1].strip()
-                        elif line.startswith('802-11-wireless.seen-bssids:'):
-                            bssid = line.split(':', 1)[1].strip().split(',')[0]
+                    psk   = psk_m.group(1).strip() if psk_m else ""
+                    sec   = sec_m.group(1).strip() if sec_m else ""
+                    bssid = bss_m.group(1).strip().split(",")[0] if bss_m else ""
 
-                    results.append((name, psk or '(kein Passwort)', sec, bssid))
-                    self.root.after(0, lambda n=name, p=psk:
-                        self.log_to(self.wlan_log,
-                            f"  {n}: {'Passwort gefunden' if p else 'offen/kein PSK'}" +
-                            chr(10)))
+                    # <hidden> bedeutet: nmcli konnte das Passwort nicht lesen
+                    if psk in ("<hidden>", "--", ""):
+                        psk = ""
+
+                    results.append((name, psk or "(kein Passwort)", sec, bssid))
+                    self.root.after(0, lambda n=name, p=psk: self.log_to(
+                        self.wlan_log,
+                        f"  {'✅' if p else '🔓'} {n}: "
+                        f"{'Passwort gefunden' if p else 'offen / kein PSK'}\n"))
 
             except Exception as e:
-                self.root.after(0, lambda: self.log_to(
-                    self.wlan_log, "Fehler: " + str(e) + chr(10)))
+                self.root.after(0, lambda err=str(e): self.log_to(
+                    self.wlan_log, f"❌ Fehler: {err}\n"))
                 return
 
-            def update_ui():
+            def _update_ui():
                 for row in results:
-                    self.wlan_tree.insert('', 'end', values=row)
-                count = len([r for r in results if r[1] != '(kein Passwort)'])
+                    self.wlan_tree.insert("", "end", values=row)
+                n_pw = len([r for r in results if r[1] != "(kein Passwort)"])
                 self.log_to(self.wlan_log,
-                    chr(10) + f"{len(results)} WLAN(s) gefunden, "
-                    f"{count} mit Passwort." + chr(10))
+                    f"\n✅ {len(results)} WLAN(s), {n_pw} mit Passwort.\n")
 
-            self.root.after(0, update_ui)
+            self.root.after(0, _update_ui)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1899,67 +1926,186 @@ class SettingsTab(GuiBase):
         T   = self.theme
         tab = ttk.Frame(nb_main)
         nb_main.add(tab, text="⚙️ Einstellungen")
-        pane = tk.Frame(tab, bg=T["bg"])
+
+        # Scrollbarer Bereich
+        canvas = tk.Canvas(tab, bg=T["bg"], highlightthickness=0)
+        sb     = ttk.Scrollbar(tab, orient='vertical', command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side='right', fill='y')
+        canvas.pack(side='left', fill='both', expand=True)
+        pane_outer = tk.Frame(canvas, bg=T["bg"])
+        win = canvas.create_window((0, 0), window=pane_outer, anchor='nw')
+        pane_outer.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width))
+        _bind_mousewheel(canvas)
+
+        pane = tk.Frame(pane_outer, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=20, pady=16)
+
+        def section(text):
+            tk.Frame(pane, bg=T["border"], height=1).pack(fill='x', pady=(14, 4))
+            tk.Label(pane, text=text, bg=T["bg"], fg=T["accent"],
+                     font=('Arial', 10, 'bold')).pack(anchor='w')
 
         def row(label, widget_fn):
             f = tk.Frame(pane, bg=T["bg"])
-            f.pack(fill='x', pady=5)
-            tk.Label(f, text=label, width=30, anchor='w',
+            f.pack(fill='x', pady=4)
+            tk.Label(f, text=label, width=32, anchor='w',
                      bg=T["bg"], fg=T["fg"], font=('Arial', 10)).pack(side='left')
             widget_fn(f)
+            return f
+
+        def color_row(label, setting_key, default):
+            """Zeile mit Farb-Vorschau und Eingabefeld."""
+            f = tk.Frame(pane, bg=T["bg"])
+            f.pack(fill='x', pady=4)
+            tk.Label(f, text=label, width=32, anchor='w',
+                     bg=T["bg"], fg=T["fg"], font=('Arial', 10)).pack(side='left')
+            var = tk.StringVar(value=self.settings.get(setting_key, default))
+            _preview_bg = var.get() if var.get().strip() else T["bg2"]
+            preview = tk.Label(f, width=3, bg=_preview_bg, relief='solid', bd=1)
+            preview.pack(side='left', padx=(0, 6))
+            ent = ttk.Entry(f, textvariable=var, width=10)
+            ent.pack(side='left')
+            def _update_preview(*_, _p=preview, _v=var, _fb=T["bg2"]):
+                try:
+                    col = _v.get().strip()
+                    _p.config(bg=col if col else _fb)
+                except Exception:
+                    pass
+            var.trace_add('write', _update_preview)
+            def _pick():
+                from tkinter.colorchooser import askcolor
+                result = askcolor(color=var.get(), parent=self.app.root,
+                                  title=f"Farbe wählen – {label}")
+                if result and result[1]:
+                    var.set(result[1])
+            ttk.Button(f, text="🎨", width=3, command=_pick).pack(side='left', padx=4)
+            tk.Label(f, text="(Hex, z.B. #2c3e50)", bg=T["bg"], fg=T["fg_dim"],
+                     font=('Arial', 8)).pack(side='left', padx=4)
+            return var
+
+        # ── Abschnitt: Aussehen ──────────────────────────────────────────────
+        section("🎨  Aussehen")
 
         self._set_theme_var = tk.StringVar(value=self.settings.get("theme", "light"))
-        row("🎨 Theme",
+        row("Theme",
             lambda f: ttk.Combobox(f, textvariable=self._set_theme_var,
-                values=["light","dark"], state='readonly', width=15).pack(side='left'))
+                values=["light", "dark"], state='readonly', width=15).pack(side='left'))
+
+        self._set_ui_font_var = tk.IntVar(value=self.settings.get("ui_font_size", 10))
+        row("Schriftgröße (UI)",
+            lambda f: ttk.Spinbox(f, from_=8, to=18,
+                textvariable=self._set_ui_font_var, width=6).pack(side='left'))
 
         self._set_font_var = tk.IntVar(value=self.settings.get("font_size", 10))
-        row("🔤 Schriftgröße (Monospace)",
+        row("Schriftgröße (Log/Monospace)",
             lambda f: ttk.Spinbox(f, from_=8, to=16,
                 textvariable=self._set_font_var, width=6).pack(side='left'))
 
+        self._set_fg_var      = color_row("Schriftfarbe (Haupttext)",
+                                          "custom_fg",      "")
+        self._set_accent_var  = color_row("Akzentfarbe",
+                                          "custom_accent",  "")
+        self._set_bg_var      = color_row("Hintergrundfarbe",
+                                          "custom_bg",      "")
+
+        tk.Label(pane,
+            text="ℹ️  Leer lassen = Theme-Standard verwenden. Neustart empfohlen nach Farbänderung.",
+            bg=T["bg"], fg=T["fg_dim"], font=('Arial', 8)).pack(anchor='w', pady=(2, 0))
+
+        # ── Abschnitt: Fenster ───────────────────────────────────────────────
+        section("🖥️  Fenster")
+
+        win_sizes = ["1400x900", "1200x800", "1600x1000", "1920x1080", "Maximiert"]
+        self._set_winsize_var = tk.StringVar(
+            value=self.settings.get("window_size", "1400x900"))
+        row("Startgröße",
+            lambda f: ttk.Combobox(f, textvariable=self._set_winsize_var,
+                values=win_sizes, state='readonly', width=15).pack(side='left'))
+
+        # ── Abschnitt: Verhalten ─────────────────────────────────────────────
+        section("⚙️  Verhalten")
+
         self._set_wipe_var = tk.StringVar(
             value=self.settings.get("default_wipe_method", "quick"))
-        row("🧹 Standard-Löschmethode",
+        row("Standard-Löschmethode",
             lambda f: ttk.Combobox(f, textvariable=self._set_wipe_var,
                 values=list(WipeEngine.METHODS.keys()),
                 state='readonly', width=20).pack(side='left'))
 
         self._set_smart_var = tk.IntVar(value=self.settings.get("smart_interval_days", 1))
-        row("📊 SMART-Intervall (Tage)",
+        row("SMART-Intervall (Tage)",
             lambda f: ttk.Spinbox(f, from_=1, to=30,
                 textvariable=self._set_smart_var, width=6).pack(side='left'))
 
         self._set_notify_var = tk.BooleanVar(value=self.settings.get("notifications", True))
-        row("🔔 Desktop-Benachrichtigungen",
+        row("Desktop-Benachrichtigungen",
             lambda f: ttk.Checkbutton(f, variable=self._set_notify_var).pack(side='left'))
 
         self._set_log_var = tk.IntVar(value=self.settings.get("log_retention_days", 30))
-        row("📋 Log-Aufbewahrung (Tage)",
+        row("Log-Aufbewahrung (Tage)",
             lambda f: ttk.Spinbox(f, from_=7, to=365,
                 textvariable=self._set_log_var, width=6).pack(side='left'))
 
-        tk.Frame(pane, bg=T["border"], height=1).pack(fill='x', pady=12)
-        ttk.Button(pane, text="💾 Einstellungen speichern",
-                   style='Accent.TButton', command=self._save).pack(anchor='w')
+        tk.Frame(pane, bg=T["border"], height=1).pack(fill='x', pady=14)
+        btn_row = tk.Frame(pane, bg=T["bg"])
+        btn_row.pack(anchor='w')
+        ttk.Button(btn_row, text="💾 Einstellungen speichern",
+                   style='Accent.TButton', command=self._save).pack(side='left', padx=(0, 8))
+        ttk.Button(btn_row, text="↩️ Auf Standard zurücksetzen",
+                   command=self._reset).pack(side='left')
 
     def _save(self):
         self.settings.update({
             "theme":               self._set_theme_var.get(),
             "font_size":           self._set_font_var.get(),
+            "ui_font_size":        self._set_ui_font_var.get(),
             "default_wipe_method": self._set_wipe_var.get(),
             "smart_interval_days": self._set_smart_var.get(),
             "notifications":       self._set_notify_var.get(),
             "log_retention_days":  self._set_log_var.get(),
+            "window_size":         self._set_winsize_var.get(),
+            "custom_fg":           self._set_fg_var.get().strip(),
+            "custom_accent":       self._set_accent_var.get().strip(),
+            "custom_bg":           self._set_bg_var.get().strip(),
         })
         save_settings(self.settings)
+        # Theme neu laden und ggf. Custom-Farben einsetzen
         new_theme = self._set_theme_var.get()
-        self.app.theme = THEMES[new_theme]
-        self.theme     = self.app.theme
+        self.app.theme = dict(THEMES[new_theme])  # Kopie!
+        T = self.app.theme
+        if self.settings.get("custom_fg"):
+            T["fg"] = T["fg_header"] = self.settings["custom_fg"]
+        if self.settings.get("custom_accent"):
+            T["accent"] = T["btn_bg"] = self.settings["custom_accent"]
+        if self.settings.get("custom_bg"):
+            T["bg"] = self.settings["custom_bg"]
+        # Fenstergröße anwenden
+        ws = self.settings.get("window_size", "1400x900")
+        if ws == "Maximiert":
+            self.app.root.state('zoomed')
+        else:
+            try:
+                self.app.root.geometry(ws)
+            except Exception:
+                pass
+        self.theme = self.app.theme
         self.apply_theme()
         self.rebuild_log_colors()
-        messagebox.showinfo("Gespeichert", "✅ Einstellungen gespeichert.\nNeustart empfohlen.")
+        messagebox.showinfo("Gespeichert", "✅ Einstellungen gespeichert.\nNeustart empfohlen für vollständige Wirkung.")
+
+    def _reset(self):
+        if not messagebox.askyesno("Zurücksetzen",
+                "Alle Einstellungen auf Standardwerte zurücksetzen?"):
+            return
+        from config import DEFAULT_SETTINGS
+        self.settings.update(DEFAULT_SETTINGS)
+        self.settings.update({"custom_fg": "", "custom_accent": "", "custom_bg": "",
+                               "window_size": "1400x900", "ui_font_size": 10})
+        save_settings(self.settings)
+        messagebox.showinfo("Zurückgesetzt",
+            "✅ Auf Standardwerte zurückgesetzt.\nBitte Programm neu starten.")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1988,6 +2134,7 @@ class AboutTab(GuiBase):
         pane.bind('<Configure>', lambda e: canvas.configure(
             scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width))
+        _bind_mousewheel(canvas)
 
         inner = tk.Frame(pane, bg=T["bg"])
         inner.pack(fill='both', expand=True, padx=40, pady=30)
@@ -2030,8 +2177,21 @@ class AboutTab(GuiBase):
                  font=('Arial', 20, 'bold'), bg=T["bg"], fg=T["accent"]).pack(anchor='w')
         tk.Label(info, text="Mario Peeß  ·  Großenhain",
                  font=('Arial', 12), bg=T["bg"], fg=T["fg"]).pack(anchor='w', pady=(6, 0))
-        tk.Label(info, text="mapegr@mailbox.org",
-                 font=('Arial', 11), bg=T["bg"], fg=T["fg_dim"]).pack(anchor='w')
+        email_lbl = tk.Label(info, text="✉️  mapegr@mailbox.org",
+                 font=('Arial', 11), bg=T["bg"], fg=T["accent"],
+                 cursor='hand2')
+        email_lbl.pack(anchor='w')
+        def _open_email():
+            try:
+                import subprocess as _sp
+                _sp.Popen(["xdg-open", "mailto:mapegr@mailbox.org"])
+            except Exception:
+                try:
+                    import webbrowser as _wb
+                    _wb.open("mailto:mapegr@mailbox.org")
+                except Exception:
+                    pass
+        email_lbl.bind("<Button-1>", lambda e: _open_email())
         tk.Label(info, text="Lizenz: GPLv3 / MIT  ·  Linux Mint / Debian / Ubuntu",
                  font=('Arial', 10), bg=T["bg"], fg=T["fg_dim"]).pack(anchor='w', pady=(4, 0))
 
@@ -2041,21 +2201,225 @@ class AboutTab(GuiBase):
             "💾  Datenrettung  –  ddrescue + photorec, echter Fortschrittsbalken",
             "🧹  Sicheres Löschen  –  dd, DoD, Gutmann, ATA/NVMe Secure Erase",
             "📊  SMART-Monitor  –  Verlauf als Texttabelle, korrekter Exit-Code",
-            "💿  ISO-Brenner  –  SHA256-Prüfung + Verifikation, externe Festplatten",
+            "💿  ISO-Brenner  –  SHA256-Prüfung + Verifikation + mint_full_installer",
             "🔗  Partition einbinden  –  fstab-Backup vor jeder Änderung",
             "🖥️  Dashboard  –  CPU, RAM, Swap, Disk, Uptime, Partitionsbalken",
             "⚙️  System  –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
-            "🌐  Netzwerk  –  Interfaces, Ping, Verbindungen",
+            "🌐  Netzwerk  –  Interfaces, Ping, Verbindungen (scrollbar)",
+            "🐧  Penguins-Eggs  –  Live-ISO erstellen, Backup, Restore (Laufwerke-Tab)",
             "📋  Logs  –  Viewer mit Einfärbung und Suche, HTML-Diagnosebericht",
             "🎨  Dark/Light-Mode  –  Catppuccin Mocha / Standard-Hell",
             "🧹  Freier Speicher löschen  –  sfill + dd, auch auf FAT/NTFS",
+            "❓  Hilfe-Tab  –  Dokumentation aller Funktionen",
         ]
         for f in features:
             tk.Label(inner, text=f, font=('Arial', 10),
                      bg=T["bg"], fg=T["fg"], anchor='w').pack(anchor='w', pady=2)
 
         tk.Frame(inner, bg=T["border"], height=1).pack(fill='x', pady=16)
+
+        # Drittanbieter-Hinweis
+        tk.Label(inner, text="🔗  Verwendete Drittanbieter-Software:",
+                 font=('Arial', 10, 'bold'), bg=T["bg"], fg=T["accent"]).pack(anchor='w', pady=(0, 4))
+        third_party = [
+            ("penguins-eggs", "Piero Proietti", "https://github.com/pieroproietti/penguins-eggs", "GPLv3"),
+            ("fresh-eggs", "Piero Proietti", "https://github.com/pieroproietti/fresh-eggs", "GPLv3"),
+            ("Ventoy", "Ventoy-Team", "https://github.com/ventoy/Ventoy", "GPLv3"),
+        ]
+        for name, author, url, lic in third_party:
+            row_f = tk.Frame(inner, bg=T["bg"])
+            row_f.pack(anchor='w', pady=1)
+            tk.Label(row_f, text=f"  • {name}  (Autor: {author}, Lizenz: {lic})  ",
+                     font=('Arial', 9), bg=T["bg"], fg=T["fg"]).pack(side='left')
+            lnk = tk.Label(row_f, text=url, font=('Arial', 9), bg=T["bg"],
+                           fg=T["accent"], cursor='hand2')
+            lnk.pack(side='left')
+            lnk.bind("<Button-1>", lambda e, u=url: _open_url(u))
+
+        def _open_url(u):
+            try:
+                import subprocess as _sp
+                _sp.Popen(["xdg-open", u])
+            except Exception:
+                import webbrowser as _wb
+                _wb.open(u)
+
+        tk.Frame(inner, bg=T["border"], height=1).pack(fill='x', pady=16)
         tk.Label(inner,
             text="Module: config · models · database · security · smart_engine ·\n"
                  "        wipe_engine · recovery_engine · gui_base · gui_drives · gui_system",
             font=('Monospace', 9), bg=T["bg"], fg=T["fg_dim"], justify='left').pack(anchor='w')
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  HILFE-TAB
+# ══════════════════════════════════════════════════════════════════════════════
+class HilfeTab(GuiBase):
+    """Hilfe- und Dokumentations-Tab für alle Programmfunktionen."""
+
+    _SECTIONS = [
+        ("🏠 Dashboard", [
+            ("Systemkarten", "Zeigt CPU-, RAM-, Swap-, Disk-Auslastung sowie Uptime und Hostname in Echtzeit an. Aktualisierung alle 5 Sekunden."),
+            ("Laufwerke-Übersicht", "Listet alle erkannten Laufwerke mit Modell, Typ, Größe und SMART-Status. Warnung bei FAILED-Status."),
+            ("Partitionsbalken", "Farbige Balken zeigen belegten Speicher pro Partition. Klick auf Segment zeigt Details."),
+        ]),
+        ("💾 Laufwerke", [
+            ("Datenrettung", "Rettet Daten von defekten Laufwerken via ddrescue (sektorweise) und photorec (Dateiwiederherstellung). Ergebnisse unter ~/Datenrettung_Ergebnisse."),
+            ("Sicheres Löschen", "Überschreibt Laufwerke mit verschiedenen Methoden: schnell (dd), DoD 5220.22-M (3-Pass), Gutmann (35-Pass), ATA/NVMe Secure Erase. ⚠ Nicht auf Systemlaufwerke anwenden!"),
+            ("SMART-Monitor", "Liest SMART-Gesundheitsdaten aus. Verlauf wird in SQLite gespeichert. Temperaturen, Sektorfehler und Gesundheitsstatus werden angezeigt."),
+            ("ISO-Brenner", "Schreibt ISO-Dateien auf USB-Sticks. SHA256-Prüfung vor und Verifikation nach dem Schreiben. Unterstützt mint_full_installer für vollständige Mint-Installation."),
+            ("USB-Clone", "Klont ein Laufwerk auf ein anderes (1:1-Kopie). Geeignet für Backups und Migration."),
+            ("Partition einbinden", "Bindet Partitionen ein/aus. Erstellt automatisch fstab-Backup vor jeder Änderung."),
+            ("🐧 Penguins-Eggs", "Erstellt Live-ISO-Abbilder des laufenden Systems. Basiert auf penguins-eggs von Piero Proietti (https://github.com/pieroproietti/penguins-eggs). Funktionen: produce (ISO erstellen), syncfrom/syncto (Backup/Restore), calamares (Installer einrichten)."),
+        ]),
+        ("🖥️ System", [
+            ("Systempflege", "Führt apt update/upgrade, autoremove, clean, Flatpak-Bereinigung, Journal-Bereinigung (7 Tage) und Thumbnail-Cache-Leerung durch."),
+            ("Optimierer", "Setzt Kernel-Parameter (BBR-TCP, Swappiness), erstellt Swap-Datei basierend auf RAM-Größe, konfiguriert Firefox Low-Memory-Policies."),
+            ("Boot-Check", "Aktiviert/deaktiviert fsck beim Boot (pass-Wert in /etc/fstab). Zeigt aktuellen Status."),
+            ("BIOS/EFI", "Verwaltet EFI-Booteinträge via efibootmgr. Boot-Reihenfolge ändern, Einträge löschen, USB-Boot setzen, ins BIOS neu starten, Backups erstellen/wiederherstellen."),
+            ("Update & Shutdown", "Installiert ein Skript das automatisch alle Updates durchführt und danach herunterfährt. Ideal als Tastenkürzel in Cinnamon."),
+            ("Einmal-Starter", "Richtet ein Script oder Programm als einmaligen Autostart ein. Wird nach dem nächsten Login automatisch gestartet und aus dem Autostart entfernt."),
+        ]),
+        ("🌐 Netzwerk", [
+            ("Interfaces", "Zeigt alle Netzwerkinterfaces mit IPv4, IPv6, MAC-Adresse und Status. Klick auf Interface zeigt Details."),
+            ("Ping", "Pingt einen Host und zeigt RTT-Zeiten an. Host und Anzahl der Pakete einstellbar."),
+            ("Verbindungen", "Listet alle aktiven TCP/UDP-Verbindungen mit Protokoll, Lokal/Remote-Adresse, Status und Prozess. Scrollbar mit Mausrad."),
+            ("WLAN-Passwörter", "Liest gespeicherte WLAN-Passwörter aus dem NetworkManager aus. Benötigt Root-Rechte."),
+        ]),
+        ("📋 Logs & Diagnose", [
+            ("Log-Viewer", "Zeigt systemd-Journal, dmesg, syslog, Kernel- und Auth-Log an. Farbige Hervorhebung von Fehlern/Warnungen. Suchfunktion mit Markierung."),
+            ("Diagnose", "Erstellt umfassenden Systembericht: Hardware, CPU, RAM, SMART, Partitionen, fstab, Kernel, Netzwerk, installierte Pakete. Export als TXT und HTML."),
+        ]),
+        ("⚙️ Einstellungen", [
+            ("Aussehen", "Theme (Light/Dark), Schriftgrößen, benutzerdefinierte Farben (Hex) mit Vorschau und Farbwähler."),
+            ("Fenster", "Startgröße des Fensters einstellbar (bis 1920×1080 oder Maximiert)."),
+            ("Verhalten", "Standard-Löschmethode, SMART-Prüfintervall, Desktop-Benachrichtigungen, Log-Aufbewahrungsdauer."),
+        ]),
+        ("🔧 Installation", [
+            ("install-peessi-multitool.sh", "Haupt-Installationsskript. Installiert alle Abhängigkeiten, erstellt Python-venv, kopiert Programmdateien, erstellt Startmenü-Eintrag und PolicyKit-Regel."),
+            ("install-deps.sh", "Installiert alle Abhängigkeiten für den Live-ISO-Build (squashfs-tools, xorriso, grub, live-boot usw.)."),
+            ("prepare_system.sh", "Bereitet das System für USB-Installer vor. Installiert Partitionierungs- und Dateisystem-Tools, optional Ventoy und Fresh-Eggs-Plugin."),
+            ("Deinstallation", "sudo /usr/local/lib/peessi-multitool/uninstall.sh"),
+        ]),
+        ("📞 Hilfe & Kontakt", [
+            ("Autor", "Mario Peeß, Großenhain  –  mapegr@mailbox.org"),
+            ("Lizenz", "GPLv3 / MIT (kompatibel)"),
+            ("Drittanbieter", "penguins-eggs und fresh-eggs: Piero Proietti (GPLv3) – https://github.com/pieroproietti/penguins-eggs\nVentoy: Ventoy-Team (GPLv3) – https://github.com/ventoy/Ventoy"),
+            ("Fehler melden", "Bei Fehlern bitte per E-Mail melden. Log-Datei: ~/peessi_multitool_fehler.log"),
+            ("Version", "1.0 Beta  –  Linux Mint / Debian / Ubuntu"),
+        ]),
+    ]
+
+    def __init__(self, nb_main, app):
+        super().__init__(app.root, app.settings, app.theme, app._log_widgets)
+        self._build(nb_main)
+
+    def _build(self, nb_main):
+        T   = self.theme
+        tab = ttk.Frame(nb_main)
+        nb_main.add(tab, text="❓ Hilfe")
+
+        # Äußerer Frame mit Suchleiste oben
+        outer = tk.Frame(tab, bg=T["bg"])
+        outer.pack(fill='both', expand=True)
+
+        # Suchleiste
+        search_f = tk.Frame(outer, bg=T["bg2"], pady=8)
+        search_f.pack(fill='x', padx=0)
+        tk.Label(search_f, text="🔍 Suche:", bg=T["bg2"], fg=T["fg"],
+                 font=('Arial', 10)).pack(side='left', padx=(16, 6))
+        self._search_var = tk.StringVar()
+        search_entry = ttk.Entry(search_f, textvariable=self._search_var, width=40, font=('Arial', 10))
+        search_entry.pack(side='left', padx=(0, 8))
+        search_entry.bind('<KeyRelease>', self._on_search)
+        ttk.Button(search_f, text="✕ Löschen",
+                   command=self._clear_search).pack(side='left')
+
+        # Haupt-Bereich: Linke Navigationsleiste + rechtes Inhaltsfenster
+        main_f = tk.Frame(outer, bg=T["bg"])
+        main_f.pack(fill='both', expand=True)
+
+        # Linke Navigation
+        nav_f = tk.Frame(main_f, bg=T["bg2"], width=200)
+        nav_f.pack(side='left', fill='y', padx=(0, 0))
+        nav_f.pack_propagate(False)
+        self._nav_buttons = []
+        for i, (section_name, _) in enumerate(self._SECTIONS):
+            btn = tk.Button(nav_f, text=section_name,
+                            font=('Arial', 9), bd=0, padx=10, pady=8,
+                            cursor='hand2', bg=T["bg2"], fg=T["fg"],
+                            relief='flat', anchor='w', wraplength=180,
+                            command=lambda idx=i: self._show_section(idx))
+            btn.pack(fill='x', padx=2, pady=1)
+            self._nav_buttons.append(btn)
+
+        # Rechtes Inhaltsfenster (scrollbar)
+        right_f = tk.Frame(main_f, bg=T["bg"])
+        right_f.pack(side='left', fill='both', expand=True)
+
+        self._content_canvas = tk.Canvas(right_f, bg=T["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(right_f, orient='vertical', command=self._content_canvas.yview)
+        self._content_canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side='right', fill='y')
+        self._content_canvas.pack(side='left', fill='both', expand=True)
+
+        self._content_inner = tk.Frame(self._content_canvas, bg=T["bg"])
+        self._content_win = self._content_canvas.create_window(
+            (0, 0), window=self._content_inner, anchor='nw')
+        self._content_inner.bind('<Configure>', lambda e: self._content_canvas.configure(
+            scrollregion=self._content_canvas.bbox('all')))
+        self._content_canvas.bind('<Configure>', lambda e: self._content_canvas.itemconfig(
+            self._content_win, width=e.width))
+
+        _bind_mousewheel(self._content_canvas)
+
+        self._show_section(0)
+
+    def _show_section(self, idx: int):
+        T = self.theme
+        # Navigation markieren
+        for i, btn in enumerate(self._nav_buttons):
+            btn.config(bg=T["accent"] if i == idx else T["bg2"],
+                       fg="#ffffff" if i == idx else T["fg"])
+        # Inhalt löschen und neu aufbauen
+        for w in self._content_inner.winfo_children():
+            w.destroy()
+        section_name, items = self._SECTIONS[idx]
+        self._render_section(section_name, items)
+
+    def _render_section(self, section_name: str, items: list):
+        T = self.theme
+        pane = self._content_inner
+
+        tk.Label(pane, text=section_name, font=('Arial', 16, 'bold'),
+                 bg=T["bg"], fg=T["accent"]).pack(anchor='w', padx=24, pady=(20, 4))
+        tk.Frame(pane, bg=T["border"], height=2).pack(fill='x', padx=24, pady=(0, 12))
+
+        for title, desc in items:
+            item_f = tk.Frame(pane, bg=T["bg2"], relief='flat', bd=0)
+            item_f.pack(fill='x', padx=24, pady=4, ipadx=12, ipady=8)
+            tk.Label(item_f, text=title, font=('Arial', 11, 'bold'),
+                     bg=T["bg2"], fg=T["fg"]).pack(anchor='w', padx=8, pady=(6, 2))
+            tk.Label(item_f, text=desc, font=('Arial', 10),
+                     bg=T["bg2"], fg=T["fg_dim"], justify='left',
+                     wraplength=700, anchor='w').pack(anchor='w', padx=8, pady=(0, 6))
+
+    def _on_search(self, event=None):
+        term = self._search_var.get().strip().lower()
+        if not term:
+            self._clear_nav_highlight()
+            return
+        T = self.theme
+        # Alle Abschnitte nach dem Begriff durchsuchen und ersten Treffer anzeigen
+        for i, (section_name, items) in enumerate(self._SECTIONS):
+            for title, desc in items:
+                if term in title.lower() or term in desc.lower() or term in section_name.lower():
+                    self._show_section(i)
+                    return
+
+    def _clear_search(self):
+        self._search_var.set("")
+        self._clear_nav_highlight()
+
+    def _clear_nav_highlight(self):
+        pass
