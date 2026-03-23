@@ -59,7 +59,20 @@ class DriveInfo:
         try:
             b = int(self.size)
         except (ValueError, TypeError):
-            return str(self.size)
+            # Größe ist bereits ein String wie '238.5G' – direkt zurückgeben
+            try:
+                import re as _re
+                s = str(self.size).strip()
+                m = _re.match(r"^([\d.,]+)\s*([KMGTP]?)i?B?$", s, _re.IGNORECASE)
+                if m:
+                    val  = float(m.group(1).replace(",", "."))
+                    unit = m.group(2).upper()
+                    mult = {"K":1024,"M":1024**2,"G":1024**3,"T":1024**4,"P":1024**5}.get(unit,1)
+                    b = int(val * mult)
+                else:
+                    return s
+            except Exception:
+                return str(self.size)
         for unit in ['B', 'KiB', 'MiB', 'GiB', 'TiB']:
             if b < 1024:
                 return f"{b:.1f} {unit}"

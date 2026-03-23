@@ -264,6 +264,26 @@ COMPANION_SCRIPTS=(
     "Festplatte_einbinden.sh"
     "Festplatten_anzeigen.sh"
 )
+
+# mint_full_installer.py suchen und kopieren (aus "linux auf usb/")
+step "Suche mint_full_installer.py"
+MINT_INSTALLER_CANDIDATES=(
+    "${SCRIPT_DIR}/mint_full_installer.py"
+    "${SCRIPT_DIR}/../linux auf usb/mint_full_installer.py"
+    "${SCRIPT_DIR}/linux auf usb/mint_full_installer.py"
+)
+for cand in "${MINT_INSTALLER_CANDIDATES[@]}"; do
+    cand_abs="$(realpath "${cand}" 2>/dev/null || echo "")"
+    if [[ -f "${cand_abs}" ]]; then
+        cp "${cand_abs}" "${INSTALL_DIR}/mint_full_installer.py"
+        chmod 755 "${INSTALL_DIR}/mint_full_installer.py"
+        success "mint_full_installer.py → ${INSTALL_DIR}/"
+        break
+    fi
+done
+if [[ ! -f "${INSTALL_DIR}/mint_full_installer.py" ]]; then
+    warning "mint_full_installer.py nicht gefunden – Mint-Installer-Tab eingeschränkt"
+fi
 echo ""
 info "Kopiere Begleit-Skripte (falls vorhanden)..."
 for s in "${COMPANION_SCRIPTS[@]}"; do
@@ -275,6 +295,22 @@ for s in "${COMPANION_SCRIPTS[@]}"; do
 done
 
 success "Programmdateien installiert: ${INSTALL_DIR}"
+
+# ── mint_full_installer.py suchen und kopieren ────────────────────────────────
+step "Suche mint_full_installer.py"
+for cand in \
+    "${SCRIPT_DIR}/mint_full_installer.py" \
+    "${SCRIPT_DIR}/../linux auf usb/mint_full_installer.py" \
+    "${SCRIPT_DIR}/linux auf usb/mint_full_installer.py"; do
+    if [[ -f "${cand}" ]]; then
+        cp "${cand}" "${INSTALL_DIR}/mint_full_installer.py"
+        chmod 755 "${INSTALL_DIR}/mint_full_installer.py"
+        success "mint_full_installer.py → ${INSTALL_DIR}/"
+        break
+    fi
+done
+[[ ! -f "${INSTALL_DIR}/mint_full_installer.py" ]] && \
+    warning "mint_full_installer.py nicht gefunden – Mint-Installer-Tab eingeschränkt"
 
 # ── Python venv anlegen ───────────────────────────────────────────────────────
 # venv anlegen fuer eventuelle zukuenftige Pakete

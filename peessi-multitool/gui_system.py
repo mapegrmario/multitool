@@ -33,23 +33,21 @@ from gui_base import GuiBase
 
 
 def _bind_mousewheel(canvas):
-    """Bindet Mausrad-Scrolling an Canvas – aktiviert nur wenn Maus drüber."""
-    def _on_enter(e):
-        canvas.bind_all("<MouseWheel>",
-            lambda ev: canvas.yview_scroll(int(-1*(ev.delta/120)), "units"))
-        canvas.bind_all("<Button-4>",
-            lambda ev: canvas.yview_scroll(-1, "units"))
-        canvas.bind_all("<Button-5>",
-            lambda ev: canvas.yview_scroll(1, "units"))
-    def _on_leave(e):
-        try:
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-        except Exception:
-            pass
-    canvas.bind("<Enter>", _on_enter)
-    canvas.bind("<Leave>", _on_leave)
+    """
+    Bindet Mausrad-Scrolling direkt ans Canvas-Widget.
+    KEIN bind_all/unbind_all – das würde Tkinter-interne Bindings
+    zerstören und kann X11/Cinnamon zum Absturz bringen!
+    """
+    def _scroll(ev):
+        if ev.delta:
+            canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
+        elif ev.num == 4:
+            canvas.yview_scroll(-1, "units")
+        elif ev.num == 5:
+            canvas.yview_scroll(1, "units")
+    canvas.bind("<MouseWheel>", _scroll)
+    canvas.bind("<Button-4>",   _scroll)
+    canvas.bind("<Button-5>",   _scroll)
 
 
 class DashboardTab(GuiBase):
@@ -1323,41 +1321,62 @@ class NetworkTab(GuiBase):
         for row in self.conn_tree.get_children():
             self.conn_tree.delete(row)
         import re as _re
+
+        def _parse_ss_line(line):
+            """Parst eine ss -tunp Zeile robust."""
+            # Felder: Netid State Recv-Q Send-Q Local Peer [Process]
+            parts = line.split()
+            if len(parts) < 5:
+                return None
+            proto = parts[0]
+            state = parts[1]
+            # Local und Peer sind Spalten 4 und 5 (Index 4,5 in 0-basiert)
+            local  = parts[4] if len(parts) > 4 else ""
+            remote = parts[5] if len(parts) > 5 else ""
+            # Prozess aus users-Feld
+            proc_info = ""
+            pm = _re.search(r'users:\(\("([^"]+)",pid=(\d+)', line)
+            if pm:
+                proc_info = f"{pm.group(2)}/{pm.group(1)}"
+            return proto, local, remote, state, proc_info
+
         try:
-            # ss -tunp: Netid State Recv-Q Send-Q Local-Address:Port Peer-Address:Port Process
-            r = subprocess.run(['ss', '-tunp'], capture_output=True, text=True, timeout=10)
+            r = subprocess.run(["ss", "-tunp"], capture_output=True, text=True, timeout=10)
             lines = r.stdout.splitlines()
-            # Erste Zeile ist Header – überspringen
-            for line in lines[1:]:
+            if not lines:
+                raise RuntimeError("ss lieferte keine Ausgabe")
+            inserted = 0
+            for line in lines:
                 line = line.rstrip()
+                # Header-Zeile überspringen
+                if line.startswith("Netid") or line.startswith("State"):
+                    continue
                 if not line:
                     continue
-                parts = line.split()
-                if len(parts) < 5:
-                    continue
-                proto = parts[0]
-                state = parts[1]
-                # Local und Remote: suche addr:port Muster (IPv4, IPv6, wildcard)
-                addr_re = _re.compile(
-                    r'(?:\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[?[0-9a-fA-F:]+\]?|\*|0\.0\.0\.0)'
-                    r':(\d+|\*)')
-                all_addrs = addr_re.findall(line)
-                # findall gibt nur die Port-Gruppe zurück – wir brauchen den ganzen Match
-                full_addrs = addr_re.finditer(line)
-                addr_list  = [m.group(0) for m in full_addrs]
-                local  = addr_list[0] if len(addr_list) > 0 else ""
-                remote = addr_list[1] if len(addr_list) > 1 else ""
-                # Prozess: users:(("name",pid=N,fd=M))
-                proc_info = ""
-                pm = _re.search(r'users:\(\("([^"]+)",pid=(\d+)', line)
-                if pm:
-                    proc_info = f"{pm.group(2)}/{pm.group(1)}"
-                self.conn_tree.insert("", "end",
-                    values=(proto, local, remote, state, proc_info))
+                result = _parse_ss_line(line)
+                if result:
+                    self.conn_tree.insert("", "end", values=result)
+                    inserted += 1
+            if inserted == 0:
+                # Fallback: netstat
+                r2 = subprocess.run(["netstat", "-tunp"], capture_output=True,
+                                    text=True, timeout=10)
+                for line in r2.stdout.splitlines()[2:]:
+                    parts = line.split()
+                    if len(parts) < 6:
+                        continue
+                    proto  = parts[0]
+                    local  = parts[3]
+                    remote = parts[4]
+                    state  = parts[5] if len(parts) > 5 else ""
+                    proc   = parts[6] if len(parts) > 6 else ""
+                    self.conn_tree.insert("", "end",
+                        values=(proto, local, remote, state, proc))
         except Exception as e:
-            # Fehler sicher ins iface_detail-Log schreiben (existiert immer)
             try:
-                self.log_to(self.iface_detail, f"Verbindungen-Fehler: {e}\n")
+                self.log_to(self.iface_detail,
+                    f"Verbindungen: Fehler beim Laden ({e})\n"
+                    "Tipp: Programm benötigt Root-Rechte für Prozess-Info.\n")
             except Exception:
                 pass
 

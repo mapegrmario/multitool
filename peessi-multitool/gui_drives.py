@@ -25,23 +25,21 @@ from gui_base import GuiBase
 
 
 def _bind_mousewheel(canvas):
-    """Bindet Mausrad-Scrolling an Canvas (Enter/Leave)."""
-    def _on_enter(e):
-        canvas.bind_all("<MouseWheel>",
-            lambda ev: canvas.yview_scroll(int(-1*(ev.delta/120)), "units"))
-        canvas.bind_all("<Button-4>",
-            lambda ev: canvas.yview_scroll(-1, "units"))
-        canvas.bind_all("<Button-5>",
-            lambda ev: canvas.yview_scroll(1, "units"))
-    def _on_leave(e):
-        try:
-            canvas.unbind_all("<MouseWheel>")
-            canvas.unbind_all("<Button-4>")
-            canvas.unbind_all("<Button-5>")
-        except Exception:
-            pass
-    canvas.bind("<Enter>", _on_enter)
-    canvas.bind("<Leave>", _on_leave)
+    """
+    Bindet Mausrad-Scrolling NUR an den Canvas selbst (KEIN bind_all/unbind_all).
+    bind_all/unbind_all entfernt interne Tkinter-Bindings → kann X11/Cinnamon
+    zum Absturz bringen. Stattdessen: direkte Bindung ans Canvas-Widget.
+    """
+    def _scroll(ev):
+        if ev.delta:
+            canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
+        elif ev.num == 4:
+            canvas.yview_scroll(-1, "units")
+        elif ev.num == 5:
+            canvas.yview_scroll(1, "units")
+    canvas.bind("<MouseWheel>", _scroll)
+    canvas.bind("<Button-4>",   _scroll)
+    canvas.bind("<Button-5>",   _scroll)
 
 # matplotlib entfernt – SMART-Verlauf als Texttabelle
 HAS_MATPLOTLIB = False
@@ -1806,6 +1804,12 @@ class DrivesTabs(GuiBase):
                        or self.eggs_dest_var.get()
                    )).pack(side='left')
 
+        # Herunterfahren nach Fertigstellung
+        self.eggs_shutdown_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(produce_f,
+            text="🔌 Rechner nach Fertigstellung herunterfahren",
+            variable=self.eggs_shutdown_var).pack(anchor='w', pady=(4, 0))
+
         btn_produce = ttk.Button(produce_f, text="▶ ISO erstellen",
                                   style='Accent.TButton',
                                   command=self._eggs_produce)
@@ -1900,57 +1904,110 @@ class DrivesTabs(GuiBase):
 
     def _eggs_install_appimage(self):
         if not messagebox.askyesno("AppImage herunterladen",
-            "Lädt die neueste penguins-eggs AppImage von GitHub herunter.\n"
+            "Lädt penguins-eggs AppImage von GitHub herunter (über API).\n"
             "Autor: Piero Proietti | Lizenz: GPLv3\n"
             "https://github.com/pieroproietti/penguins-eggs\n\n"
             "Fortfahren?"):
             return
-        cmd = ("bash -c '"
-               "URL=https://github.com/pieroproietti/penguins-eggs/releases/latest/download/penguins-eggs.AppImage; "
-               "echo Lade herunter...; "
-               "wget -O /tmp/penguins-eggs.AppImage \"$URL\" || curl -L -o /tmp/penguins-eggs.AppImage \"$URL\"; "
-               "cp /tmp/penguins-eggs.AppImage /usr/local/bin/eggs; "
-               "chmod +x /usr/local/bin/eggs; "
-               "echo Fertig: $(eggs --version 2>/dev/null || echo OK)'")
+        # GitHub API → echte Download-URL ermitteln + Datei validieren
+        cmd = r"""bash -c '
+set -e
+echo "Ermittle aktuelle Version via GitHub API..."
+API_URL="https://api.github.com/repos/pieroproietti/penguins-eggs/releases/latest"
+RELEASE=$(curl -s "$API_URL" 2>/dev/null || wget -qO- "$API_URL" 2>/dev/null)
+if [ -z "$RELEASE" ]; then
+    echo "FEHLER: GitHub API nicht erreichbar."
+    exit 1
+fi
+# URL des AppImage aus JSON extrahieren (grep-Fallback ohne jq)
+DL_URL=$(echo "$RELEASE" | grep -o '"browser_download_url": *"[^"]*AppImage"' | grep -o "https://[^"]*" | head -1)
+if [ -z "$DL_URL" ]; then
+    echo "FEHLER: Kein AppImage in den Release-Assets gefunden."
+    echo "Assets:"
+    echo "$RELEASE" | grep "browser_download_url" | head -10
+    exit 1
+fi
+echo "Download-URL: $DL_URL"
+TMP=/tmp/penguins-eggs-new.AppImage
+wget -O "$TMP" "$DL_URL" || curl -L -o "$TMP" "$DL_URL"
+SIZE=$(stat -c%s "$TMP" 2>/dev/null || echo 0)
+echo "Dateigröße: $SIZE Bytes"
+if [ "$SIZE" -lt 1000000 ]; then
+    echo "FEHLER: Datei zu klein ($SIZE Bytes) – Download fehlgeschlagen."
+    cat "$TMP" 2>/dev/null
+    rm -f "$TMP"
+    exit 1
+fi
+cp "$TMP" /usr/local/bin/eggs
+chmod +x /usr/local/bin/eggs
+rm -f "$TMP"
+echo "Fertig: $(eggs --version 2>/dev/null || echo installiert)"
+' """
         self.run_shell_async(cmd, self.eggs_log,
                              done_cb=self._eggs_check_status)
 
     def _eggs_produce(self):
         import shutil as _shutil
-        if not _shutil.which("eggs"):
-            messagebox.showerror("Fehler", "penguins-eggs ist nicht installiert.\nBitte zuerst installieren.")
+        eggs_path = _shutil.which("eggs") or "/usr/local/bin/eggs"
+        if not os.path.isfile(eggs_path):
+            messagebox.showerror("Fehler", "penguins-eggs ist nicht installiert.\nBitte fresh-eggs installieren.")
             return
-        comp = self.eggs_compression_var.get()
-        parts = ["eggs", "produce", f"--compression={comp}"]
+        if os.path.getsize(eggs_path) < 1000:
+            messagebox.showerror("Defekte Installation",
+                "Die eggs-Datei ist defekt (zu klein).\n"
+                "Bitte 'fresh-eggs installieren' erneut ausführen.")
+            return
+        comp  = self.eggs_compression_var.get()
+        args  = ["produce", f"--compression={comp}"]
         if self.eggs_max_var.get():
-            parts.append("--max")
+            args.append("--max")
         if self.eggs_backup_var.get():
-            parts.append("--backup")
+            args.append("--backup")
         name = self.eggs_name_var.get().strip()
         if name:
-            parts += ["--basename", name]
+            args += ["--basename", name]
         dest = self.eggs_dest_var.get().strip()
         if dest and os.path.isdir(dest):
-            parts += ["--destdir", dest]
-        import shutil as _shutil
-        eggs_path = _shutil.which("eggs") or "/usr/local/bin/eggs"
-        cmd = "bash -c 'PATH=/usr/local/bin:/usr/bin:/bin " + eggs_path + " " + " ".join(parts[1:]) + "'"
-        if not messagebox.askyesno("ISO erstellen",
-            f"Erstellt eine Live-ISO des laufenden Systems.\n\n"
-            f"Befehl: {cmd}\n\n"
-            f"Kompression: {comp}  |  Max: {self.eggs_max_var.get()}  |  Backup: {self.eggs_backup_var.get()}\n\n"
-            "Dies kann je nach Systemgröße 15–60 Minuten dauern. Fortfahren?"):
+            args += ["--destdir", dest]
+        args_str = " ".join(args)
+        shutdown = getattr(self, "eggs_shutdown_var", None)
+        do_shutdown = shutdown and shutdown.get()
+        shutdown_suffix = " && sleep 5 && systemctl poweroff" if do_shutdown else ""
+        cmd = f"bash -c 'PATH=/usr/local/bin:/usr/bin:/bin:$PATH eggs {args_str}{shutdown_suffix}'"
+        msg = (f"Erstellt eine Live-ISO des laufenden Systems.\n\n"
+               f"Kompression: {comp}  |  Max: {self.eggs_max_var.get()}  "
+               f"|  Backup: {self.eggs_backup_var.get()}\n")
+        if dest:
+            msg += f"Zielordner: {dest}\n"
+        if do_shutdown:
+            msg += "\n⚠️  Der Rechner wird nach Fertigstellung heruntergefahren!\n"
+        msg += "\nDies kann 15–60 Minuten dauern. Fortfahren?"
+        if not messagebox.askyesno("ISO erstellen", msg):
             return
         self.run_shell_async(cmd, self.eggs_log)
 
     def _eggs_run_cmd(self, subcmd: str):
         import shutil as _shutil
         eggs_path = _shutil.which("eggs") or "/usr/local/bin/eggs"
+        # Validieren: ist eggs ein echtes Executable (> 100 Bytes)?
         if not os.path.isfile(eggs_path):
-            messagebox.showerror("Fehler", "penguins-eggs ist nicht installiert.")
+            messagebox.showerror("Fehler", "penguins-eggs ist nicht installiert.\n"
+                "Bitte über 'fresh-eggs installieren' einrichten.")
             return
-        # AppImage/Node-Skripte brauchen volle PATH-Umgebung
-        cmd = "bash -c 'PATH=/usr/local/bin:/usr/bin:/bin " + eggs_path + " " + subcmd + "'"
+        size = os.path.getsize(eggs_path)
+        if size < 1000:
+            messagebox.showerror("Defekte Installation",
+                f"Die eggs-Datei ist nur {size} Bytes groß und daher defekt.\n\n"
+                "Wahrscheinlich wurde ein fehlgeschlagener AppImage-Download\n"
+                "über eine funktionierende fresh-eggs-Installation kopiert.\n\n"
+                "Bitte 'fresh-eggs installieren' erneut ausführen.")
+            return
+        # Hinweis bei calamares
+        if subcmd == "calamares":
+            self.log_to(self.eggs_log,
+                "ℹ️  eggs calamares richtet den Krill-Installer ein (Ersatz für Calamares).\n"
+                "    Exit 0 = Erfolg. Die ISO wird damit installierbar.\n\n")
+        cmd = f"bash -c 'PATH=/usr/local/bin:/usr/bin:/bin:$PATH eggs {subcmd}'"
         self.run_shell_async(cmd, self.eggs_log)
 
     def _eggs_list_isos(self):
@@ -2028,10 +2085,14 @@ class DrivesTabs(GuiBase):
 
     def _mint_import(self):
         """
-        Importiert mint_full_installer.py aus verschiedenen möglichen Pfaden.
-        Gibt das Modul zurück oder None bei Fehler.
+        Importiert mint_full_installer.py – gecacht, wird nur 1× geladen.
+        Beim Import wird logging.basicConfig aufgerufen → danach erst cachen.
         """
-        import importlib.util as _ilu, sys as _sys
+        # Cache: nach erstem Import nicht erneut laden
+        if hasattr(self, "_mint_mod_cache"):
+            return self._mint_mod_cache
+
+        import importlib.util as _ilu
         candidates = [
             "/usr/local/lib/peessi-multitool/mint_full_installer.py",
             os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -2046,10 +2107,14 @@ class DrivesTabs(GuiBase):
                     spec = _ilu.spec_from_file_location("mint_full_installer", path)
                     mod  = _ilu.module_from_spec(spec)
                     spec.loader.exec_module(mod)
+                    self._mint_mod_cache = mod   # cachen
                     return mod
                 except Exception as e:
-                    self.log_to(self.mint_log if hasattr(self, "mint_log") else self.iso_log,
-                                f"Import-Fehler: {e}\n")
+                    log_w = self.mint_log if hasattr(self, "mint_log") else self.iso_log
+                    self.log_to(log_w, f"Import-Fehler: {e}\n")
+                    self._mint_mod_cache = None
+                    return None
+        self._mint_mod_cache = None
         return None
 
     def _build_mint_installer_tab(self, nb):
@@ -2129,8 +2194,10 @@ class DrivesTabs(GuiBase):
                 setattr(self, f"_mint_drives_{var_name}", drives)
             except Exception as e:
                 cb['values'] = [f"Fehler: {e}"]
-        ttk.Button(row, text="🔄", width=3, command=_refresh).pack(side='left')
-        _refresh()
+        ttk.Button(row, text="🔄 Laufwerke laden", command=_refresh).pack(side='left')
+        # KEIN sofortiger _refresh() – wird erst bei Klick oder Tab-Wechsel geladen
+        # Verhindert 5× mint_full_installer-Import + lsblk beim Programmstart
+        cb['values'] = ["← Bitte 'Laufwerke laden' klicken"]
         return var
 
     def _mint_get_drive(self, var_name: str):
