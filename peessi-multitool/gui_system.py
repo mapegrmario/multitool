@@ -34,20 +34,33 @@ from gui_base import GuiBase
 
 def _bind_mousewheel(canvas):
     """
-    Bindet Mausrad-Scrolling direkt ans Canvas-Widget.
-    KEIN bind_all/unbind_all – das würde Tkinter-interne Bindings
-    zerstören und kann X11/Cinnamon zum Absturz bringen!
+    Bindet Mausrad-Scrolling an Canvas UND alle seine Kind-Widgets.
+    KEIN bind_all/unbind_all – würde Tkinter-interne Bindings zerstören.
+    Stattdessen: rekursiv alle Kinder binden, damit Scroll auch über
+    inneren Labels/Frames/etc. funktioniert.
     """
     def _scroll(ev):
-        if ev.delta:
-            canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
-        elif ev.num == 4:
-            canvas.yview_scroll(-1, "units")
-        elif ev.num == 5:
-            canvas.yview_scroll(1, "units")
-    canvas.bind("<MouseWheel>", _scroll)
-    canvas.bind("<Button-4>",   _scroll)
-    canvas.bind("<Button-5>",   _scroll)
+        try:
+            if ev.delta:
+                canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
+            elif ev.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif ev.num == 5:
+                canvas.yview_scroll(1, "units")
+        except Exception:
+            pass
+
+    def _bind_to_widget(widget):
+        widget.bind("<MouseWheel>", _scroll, add="+")
+        widget.bind("<Button-4>",   _scroll, add="+")
+        widget.bind("<Button-5>",   _scroll, add="+")
+        for child in widget.winfo_children():
+            _bind_to_widget(child)
+
+    _bind_to_widget(canvas)
+
+    # Neue Kinder automatisch binden wenn sie erstellt werden
+    canvas.bind("<Map>", lambda e: _bind_to_widget(canvas), add="+")
 
 
 class DashboardTab(GuiBase):
@@ -74,6 +87,7 @@ class DashboardTab(GuiBase):
             scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(win, width=e.width))
         _bind_mousewheel(canvas)
+        canvas.bind("<Visibility>", lambda e: _bind_mousewheel(canvas), add="+")
 
         grid = tk.Frame(inner, bg=T["bg"])
         grid.pack(fill='both', expand=True, padx=16, pady=16)
@@ -459,59 +473,102 @@ class SystemTab(GuiBase):
 
     # ── Optimierer ───────────────────────────────────────────────────────────
     def _build_optimizer(self, nb):
-        self.make_shell_tab(nb,
-            "⚡ Optimierer",
-            "Kernel-Tuning (BBR falls verfügbar, Swappiness), dynamische Swap-Datei,\n"
-            "Firefox Low-Memory-Policies (nur wenn Firefox installiert).\n"
-            "Funktioniert auf allen Debian/Ubuntu/Mint-Systemen.  ⚠️ Benötigt Root. Neustart empfohlen.",
-            "Optimieren",
-            ("bash -c '"
-             "echo \"=== 1. Kernel-Tuning ===\"; "
-             "CONF=/etc/sysctl.d/99-peessi-optimizer.conf; "
-             "{"
-             "echo \"vm.swappiness = 10\"; "
-             "echo \"vm.vfs_cache_pressure = 50\"; "
-             "echo \"vm.dirty_ratio = 10\"; "
-             "echo \"vm.dirty_background_ratio = 5\"; "
-             "echo \"net.core.default_qdisc = fq\"; "
-             "if modprobe tcp_bbr 2>/dev/null && grep -q bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then "
-             "  echo \"net.ipv4.tcp_congestion_control = bbr\"; "
-             "  echo \"✓ BBR TCP-Modul verfuegbar und aktiviert.\"; "
-             "else "
-             "  echo \"# BBR nicht verfuegbar (Kernel-Modul fehlt), cubic beibehalten\"; "
-             "  echo \"⚠ BBR nicht verfuegbar – Standard-TCP bleibt aktiv.\"; "
-             "fi; "
-             "} | tee $CONF > /dev/null; "
-             "grep -v '^echo\\|^if\\|^else\\|^fi' $CONF > /tmp/sysctl_clean.conf && mv /tmp/sysctl_clean.conf $CONF; "
-             "sysctl --system > /dev/null && echo \"✓ Kernel-Parameter gesetzt.\"; "
-             "echo; echo \"=== 2. Swap-Datei (dynamisch) ===\"; "
-             "RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo); "
-             "if [ $RAM_MB -le 2048 ]; then SWAP_MB=4096; "
-             "elif [ $RAM_MB -le 4096 ]; then SWAP_MB=4096; "
-             "elif [ $RAM_MB -le 8192 ]; then SWAP_MB=8192; "
-             "else SWAP_MB=4096; fi; "
-             "FREE_KB=$(df / | awk 'NR==2{print $4}'); "
-             "FREE_MB=$((FREE_KB/1024)); "
-             "if [ $FREE_MB -lt $((SWAP_MB+1024)) ]; then "
-             "  echo \"⚠ Nicht genug freier Speicher fuer ${SWAP_MB}MB Swap (frei: ${FREE_MB}MB). Swap uebersprungen.\"; "
-             "else "
-             "  swapoff -a 2>/dev/null; [ -f /swapfile ] && rm /swapfile; "
-             "  dd if=/dev/zero of=/swapfile bs=1M count=$SWAP_MB status=progress; "
-             "  chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile; "
-             "  grep -q /swapfile /etc/fstab || echo \"/swapfile none swap sw 0 0\" >> /etc/fstab; "
-             "  echo \"✓ ${SWAP_MB}MB Swap aktiv (RAM: ${RAM_MB}MB).\"; "
-             "fi; "
-             "echo; echo \"=== 3. Firefox (optional) ===\"; "
-             "if command -v firefox >/dev/null 2>&1 || [ -d /etc/firefox ]; then "
-             "  mkdir -p /etc/firefox/policies; "
-             "  printf '{\"policies\":{\"Preferences\":{"
-             "\"browser.tabs.unloadOnLowMemory\":true,"
-             "\"browser.low_commit_space_threshold_mb\":2048}}}' "
-             "  > /etc/firefox/policies/policies.json && echo \"✓ Firefox Low-Memory-Policies gesetzt.\"; "
-             "else echo \"ℹ Firefox nicht installiert – uebersprungen.\"; fi; "
-             "echo; echo \"✅ Optimierung abgeschlossen.\"'"
-             )
-        )
+        T = self.theme
+        tab = ttk.Frame(nb)
+        nb.add(tab, text="⚡ Optimierer")
+        pane = tk.Frame(tab, bg=T["bg"])
+        pane.pack(fill="both", expand=True, padx=12, pady=10)
+
+        desc = ttk.LabelFrame(pane, text=" Beschreibung ", padding=8)
+        desc.pack(fill="x", pady=(0, 8))
+        tk.Label(desc,
+            text="Kernel-Tuning (BBR falls verfügbar, Swappiness), dynamische Swap-Datei,\n"
+                 "Firefox Low-Memory-Policies (nur wenn Firefox installiert).\n"
+                 "Funktioniert auf Debian/Ubuntu/Mint.  ⚠️ Benötigt Root. Neustart empfohlen.",
+            bg=T["bg"], fg=T["fg"], font=("Arial", 9), justify="left").pack(anchor="w")
+
+        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=8)
+        log_f.pack(fill="both", expand=True)
+        opt_log = self.make_log_widget(log_f, height=20)
+        opt_log.pack(fill="both", expand=True)
+
+        btn_f = tk.Frame(pane, bg=T["bg"])
+        btn_f.pack(fill="x", pady=(8, 0))
+        run_btn = ttk.Button(btn_f, text="▶ Optimieren", style="Accent.TButton")
+        run_btn.pack(side="right", padx=4)
+        ttk.Button(btn_f, text="📋 Kopieren",
+                   command=lambda: self.copy_log(opt_log)).pack(side="right", padx=4)
+        ttk.Button(btn_f, text="🗑 Leeren",
+                   command=lambda: self.clear_log(opt_log)).pack(side="right", padx=4)
+
+        def _run():
+            # Script in Python schreiben – kein Heredoc, kein Escaping-Problem
+            script = r"""#!/bin/bash
+set -e
+echo "=== 1. Kernel-Tuning ==="
+CONF=/etc/sysctl.d/99-peessi-optimizer.conf
+{
+echo "vm.swappiness = 10"
+echo "vm.vfs_cache_pressure = 50"
+echo "vm.dirty_ratio = 10"
+echo "vm.dirty_background_ratio = 5"
+echo "net.core.default_qdisc = fq"
+if modprobe tcp_bbr 2>/dev/null && grep -q bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then
+  echo "net.ipv4.tcp_congestion_control = bbr"
+  echo "V BBR TCP-Modul verfuegbar und aktiviert."
+else
+  echo "# BBR nicht verfuegbar - cubic beibehalten"
+  echo "W BBR nicht verfuegbar - Standard-TCP bleibt aktiv."
+fi
+} > "$CONF"
+sysctl --system > /dev/null && echo "V Kernel-Parameter gesetzt."
+echo
+echo "=== 2. Swap-Datei ==="
+RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if   [ "$RAM_MB" -le 2048 ]; then SWAP_MB=4096
+elif [ "$RAM_MB" -le 4096 ]; then SWAP_MB=4096
+elif [ "$RAM_MB" -le 8192 ]; then SWAP_MB=8192
+else SWAP_MB=4096; fi
+FREE_KB=$(df / | awk 'NR==2{print $4}')
+FREE_MB=$((FREE_KB / 1024))
+if [ "$FREE_MB" -lt $((SWAP_MB + 1024)) ]; then
+  echo "W Nicht genug Speicher fuer ${SWAP_MB}MB Swap (frei: ${FREE_MB}MB). Uebersprungen."
+else
+  swapoff -a 2>/dev/null || true
+  [ -f /swapfile ] && rm /swapfile
+  dd if=/dev/zero of=/swapfile bs=1M count="$SWAP_MB" status=progress
+  chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile
+  grep -q /swapfile /etc/fstab || echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  echo "V ${SWAP_MB}MB Swap aktiv (RAM: ${RAM_MB}MB)."
+fi
+echo
+echo "=== 3. Firefox (optional) ==="
+if command -v firefox >/dev/null 2>&1 || [ -d /etc/firefox ]; then
+  mkdir -p /etc/firefox/policies
+  cat > /etc/firefox/policies/policies.json << 'JSON'
+{"policies":{"Preferences":{"browser.tabs.unloadOnLowMemory":true,"browser.low_commit_space_threshold_mb":2048}}}
+JSON
+  echo "V Firefox Low-Memory-Policies gesetzt."
+else
+  echo "I Firefox nicht installiert - uebersprungen."
+fi
+echo
+echo "OK Optimierung abgeschlossen."
+"""
+            try:
+                with open("/tmp/peessi_optimizer.sh", "w") as f:
+                    f.write(script)
+                import os as _os
+                _os.chmod("/tmp/peessi_optimizer.sh", 0o755)
+            except Exception as e:
+                self.log_to(opt_log, f"Fehler beim Schreiben: {e}\n")
+                return
+            self.run_shell_async("bash /tmp/peessi_optimizer.sh",
+                                  opt_log, run_btn,
+                                  done_cb=lambda: __import__("os").unlink(
+                                      "/tmp/peessi_optimizer.sh"))
+
+        run_btn.config(command=_run)
 
     # ── Prozesse ─────────────────────────────────────────────────────────────
     def _build_boot(self, nb):
@@ -2036,14 +2093,20 @@ class SettingsTab(GuiBase):
         pane_outer.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width))
         _bind_mousewheel(canvas)
+        canvas.bind("<Visibility>", lambda e: _bind_mousewheel(canvas), add="+")
 
         pane = tk.Frame(pane_outer, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=20, pady=16)
 
         # Alpha-Hinweis
-        tk.Label(pane,
-            text="🚧 Version 1.0 Alpha – Einstellungen werden unter ~/.config/peessi-multitool/ gespeichert",
-            bg=T["bg"], fg=T["fg_dim"], font=('Arial', 8, 'italic')).pack(anchor='w', pady=(0, 6))
+        alpha_row = tk.Frame(pane, bg=T["bg2"], pady=6, padx=10)
+        alpha_row.pack(fill='x', pady=(0, 8))
+        tk.Label(alpha_row,
+            text="🚧 Version 1.0 Alpha – Entwicklungsversion",
+            bg=T["bg2"], fg=T["warning"], font=('Arial', 9, 'bold')).pack(side='left')
+        tk.Label(alpha_row,
+            text=" | Gespeichert: ~/.config/peessi-multitool/settings.json",
+            bg=T["bg2"], fg=T["fg_dim"], font=('Arial', 8)).pack(side='left')
 
         def section(text):
             tk.Frame(pane, bg=T["border"], height=1).pack(fill='x', pady=(14, 4))
@@ -2238,6 +2301,8 @@ class AboutTab(GuiBase):
             scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>', lambda e: canvas.itemconfig(win, width=e.width))
         _bind_mousewheel(canvas)
+        # Nochmal nach vollständigem Aufbau aller Kinder binden
+        canvas.bind("<Visibility>", lambda e: _bind_mousewheel(canvas), add="+")
 
         inner = tk.Frame(pane, bg=T["bg"])
         inner.pack(fill='both', expand=True, padx=40, pady=30)
@@ -2305,19 +2370,20 @@ class AboutTab(GuiBase):
         tk.Frame(inner, bg=T["border"], height=1).pack(fill='x', pady=16)
 
         features = [
-            "💾  Datenrettung  –  ddrescue + photorec, echter Fortschrittsbalken",
-            "🧹  Sicheres Löschen  –  dd, DoD, Gutmann, ATA/NVMe Secure Erase",
-            "📊  SMART-Monitor  –  Verlauf als Texttabelle, korrekter Exit-Code",
-            "💿  ISO-Brenner  –  SHA256-Prüfung + Verifikation + mint_full_installer",
-            "🔗  Partition einbinden  –  fstab-Backup vor jeder Änderung",
-            "🖥️  Dashboard  –  CPU, RAM, Swap, Disk, Uptime, Partitionsbalken",
-            "⚙️  System  –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
-            "🌐  Netzwerk  –  Interfaces, Ping, Verbindungen (scrollbar)",
-            "🐧  Penguins-Eggs  –  Live-ISO erstellen, Backup, Restore (Laufwerke-Tab)",
-            "📋  Logs  –  Viewer mit Einfärbung und Suche, HTML-Diagnosebericht",
-            "🎨  Dark/Light-Mode  –  Catppuccin Mocha / Standard-Hell",
-            "🧹  Freier Speicher löschen  –  sfill + dd, auch auf FAT/NTFS",
-            "❓  Hilfe-Tab  –  Dokumentation aller Funktionen",
+            "💾  Datenrettung        –  ddrescue + photorec, Fortschrittsbalken",
+            "🧹  Sicheres Löschen   –  dd, DoD 5220.22-M, Gutmann, ATA/NVMe Secure Erase",
+            "📊  SMART-Monitor      –  Gesundheitsstatus, Temperatur, SQLite-Verlauf",
+            "💿  ISO-Brenner        –  SHA256-Prüfung, Verifikation, 🔁 USB-Clone Sub-Tab",
+            "🍃  Mint-Installer     –  DD/Full/Ventoy/Clone-Modi, Info, Systemvorbereitung",
+            "🔗  Partition          –  Einbinden/Aushängen, fstab-Backup automatisch",
+            "🐧  Penguins-Eggs      –  Live-ISO erstellen, fresh-eggs, AppImage, calamares",
+            "🖥️  Dashboard          –  CPU, RAM, Swap, Disk, Uptime, Partitionsbalken",
+            "⚙️  System             –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
+            "🌐  Netzwerk           –  Interfaces, Ping, Verbindungen (sortierbar), WLAN-Keys",
+            "📋  Logs & Diagnose   –  Viewer mit Suche + Farbmarkierung, HTML-Bericht",
+            "🎨  Dark/Light-Mode   –  Catppuccin Mocha / Standard-Hell, anpassbare Farben",
+            "❓  Hilfe              –  Vollständige Inline-Dokumentation mit Suche",
+            "⚠️  Haftungsausschluss –  Ohne Gewährleistung  |  Backups vor jeder Operation!",
         ]
         for f in features:
             tk.Label(inner, text=f, font=('Arial', 10),
@@ -2405,7 +2471,9 @@ class HilfeTab(GuiBase):
         ]),
         ("🖥️ System", [
             ("Systempflege", "Führt apt update/upgrade, autoremove, clean, Flatpak-Bereinigung, Journal-Bereinigung (7 Tage) und Thumbnail-Cache-Leerung durch."),
-            ("Optimierer", "Setzt Kernel-Parameter (BBR-TCP, Swappiness), erstellt Swap-Datei basierend auf RAM-Größe, konfiguriert Firefox Low-Memory-Policies."),
+            ("Optimierer", "Setzt Kernel-Parameter (BBR-TCP falls verfügbar, Swappiness=10, dirty_ratio), "
+             "erstellt Swap-Datei dynamisch basierend auf RAM-Größe (2–8 GB RAM → 4–8 GB Swap), "
+             "konfiguriert Firefox Low-Memory-Policies. Neustart empfohlen."),
             ("Boot-Check", "Aktiviert/deaktiviert fsck beim Boot (pass-Wert in /etc/fstab). Zeigt aktuellen Status."),
             ("BIOS/EFI", "Verwaltet EFI-Booteinträge via efibootmgr. Boot-Reihenfolge ändern, Einträge löschen, USB-Boot setzen, ins BIOS neu starten, Backups erstellen/wiederherstellen."),
             ("Update & Shutdown", "Installiert ein Skript das automatisch alle Updates durchführt und danach herunterfährt. Ideal als Tastenkürzel in Cinnamon."),

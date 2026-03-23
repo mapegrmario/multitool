@@ -26,9 +26,8 @@ from gui_base import GuiBase
 
 def _bind_mousewheel(canvas):
     """
-    Bindet Mausrad-Scrolling NUR an den Canvas selbst (KEIN bind_all/unbind_all).
-    bind_all/unbind_all entfernt interne Tkinter-Bindings → kann X11/Cinnamon
-    zum Absturz bringen. Stattdessen: direkte Bindung ans Canvas-Widget.
+    Bindet Mausrad-Scrolling an Canvas UND alle Child-Widgets rekursiv.
+    KEIN bind_all/unbind_all – würde X11/Cinnamon destabilisieren.
     """
     def _scroll(ev):
         if ev.delta:
@@ -37,9 +36,15 @@ def _bind_mousewheel(canvas):
             canvas.yview_scroll(-1, "units")
         elif ev.num == 5:
             canvas.yview_scroll(1, "units")
-    canvas.bind("<MouseWheel>", _scroll)
-    canvas.bind("<Button-4>",   _scroll)
-    canvas.bind("<Button-5>",   _scroll)
+
+    def _bind_recursive(widget):
+        widget.bind("<MouseWheel>", _scroll, add="+")
+        widget.bind("<Button-4>",   _scroll, add="+")
+        widget.bind("<Button-5>",   _scroll, add="+")
+        for child in widget.winfo_children():
+            _bind_recursive(child)
+
+    _bind_recursive(canvas)
 
 # matplotlib entfernt – SMART-Verlauf als Texttabelle
 HAS_MATPLOTLIB = False
@@ -1764,7 +1769,10 @@ class DrivesTabs(GuiBase):
         ttk.Button(btn_row_inst, text="📥 AppImage herunterladen",
                    command=self._eggs_install_appimage).pack(side='left', padx=(0, 6))
         ttk.Button(btn_row_inst, text="🔧 eggs calamares einrichten",
-                   command=lambda: self._eggs_run_cmd("calamares")).pack(side='left')
+                   command=lambda: self._eggs_run_cmd("calamares")).pack(side='left', padx=(0, 6))
+        ttk.Button(btn_row_inst, text="🗑 Defekte eggs-Datei entfernen",
+                   style='Danger.TButton',
+                   command=self._eggs_remove_defective).pack(side='left')
 
         # ── ISO erstellen (produce) ───────────────────────────────────────
         produce_f = ttk.LabelFrame(pane, text=" 🐚 ISO erstellen (eggs produce) ", padding=8)
@@ -1866,25 +1874,37 @@ class DrivesTabs(GuiBase):
     # ── Eggs-Hilfsmethoden ────────────────────────────────────────────────────
     def _eggs_check_status(self):
         import shutil as _shutil
-        if _shutil.which("eggs"):
-            try:
-                import subprocess as _sp
-                r = _sp.run(["eggs", "--version"], capture_output=True, text=True, timeout=5)
-                ver = r.stdout.strip() or r.stderr.strip()
+        eggs_path = _shutil.which("eggs") or "/usr/local/bin/eggs"
+        if os.path.isfile(eggs_path):
+            size = os.path.getsize(eggs_path)
+            if size < 1000:
                 self.eggs_status_lbl.config(
-                    text="🟢 penguins-eggs ist installiert",
-                    fg=self.theme["success"])
-                self.eggs_version_lbl.config(text=f"Version: {ver[:80]}")
-            except Exception as e:
-                self.eggs_status_lbl.config(
-                    text="🟡 eggs gefunden, aber Version nicht lesbar",
-                    fg=self.theme["warning"])
-                self.eggs_version_lbl.config(text=str(e)[:80])
+                    text=f"❌ eggs DEFEKT ({size} Bytes) – fehlgeschlagener Download!",
+                    fg=self.theme["danger"])
+                self.eggs_version_lbl.config(
+                    text=f"Pfad: {eggs_path}  |  "
+                         f"Fix: Klick auf '🗑 Defekte eggs-Datei entfernen' dann 'fresh-eggs installieren'")
+            else:
+                try:
+                    import subprocess as _sp
+                    r = _sp.run([eggs_path, "--version"],
+                                capture_output=True, text=True, timeout=5)
+                    ver = r.stdout.strip() or r.stderr.strip()
+                    self.eggs_status_lbl.config(
+                        text="🟢 penguins-eggs ist installiert",
+                        fg=self.theme["success"])
+                    self.eggs_version_lbl.config(text=f"Version: {ver[:80]}")
+                except Exception as e:
+                    self.eggs_status_lbl.config(
+                        text="🟡 eggs gefunden, aber Version nicht lesbar",
+                        fg=self.theme["warning"])
+                    self.eggs_version_lbl.config(text=str(e)[:80])
         else:
             self.eggs_status_lbl.config(
                 text="🔴 penguins-eggs ist NICHT installiert",
                 fg=self.theme["danger"])
-            self.eggs_version_lbl.config(text="Bitte über die Installations-Schaltflächen installieren.")
+            self.eggs_version_lbl.config(
+                text="Bitte über die Installations-Schaltflächen installieren.")
 
     def _eggs_install_fresh(self):
         # Installiert penguins-eggs über fresh-eggs (Piero Proietti, GPLv3)
@@ -1895,10 +1915,13 @@ class DrivesTabs(GuiBase):
             "https://github.com/pieroproietti/fresh-eggs\n\n"
             "Benötigt Internet und Root-Rechte. Fortfahren?"):
             return
-        cmd = ("bash -c '"
-               "rm -rf /tmp/fresh-eggs; "
-               "cd /tmp && git clone https://github.com/pieroproietti/fresh-eggs && "
-               "cd fresh-eggs && bash ./fresh-eggs.sh'")
+        cmd = (
+            "rm -rf /tmp/fresh-eggs; "
+            "cd /tmp && git clone https://github.com/pieroproietti/fresh-eggs && "
+            "cd fresh-eggs && "
+            # DEBIAN_FRONTEND=noninteractive + yes-Pipe: verhindert interaktive Prompts bei .deb-Installation
+            "DEBIAN_FRONTEND=noninteractive yes '' | bash ./fresh-eggs.sh"
+        )
         self.run_shell_async(cmd, self.eggs_log,
                              done_cb=self._eggs_check_status)
 
@@ -2076,6 +2099,38 @@ echo "Fertig: $(eggs --version 2>/dev/null || echo installiert)"
         if not os.path.isdir(folder):
             folder = str(USER_HOME)
         _sp.Popen(["xdg-open", folder])
+
+    def _eggs_remove_defective(self):
+        """Entfernt defekte eggs-Datei (< 1000 Bytes) und zeigt Anleitung."""
+        import shutil as _shutil
+        eggs_path = _shutil.which("eggs") or "/usr/local/bin/eggs"
+        if not os.path.isfile(eggs_path):
+            messagebox.showinfo("Nicht nötig", "Keine eggs-Datei gefunden.")
+            return
+        size = os.path.getsize(eggs_path)
+        if size >= 1000:
+            if not messagebox.askyesno("Hinweis",
+                f"Die eggs-Datei scheint OK zu sein ({size} Bytes).\n"
+                f"Trotzdem entfernen?", icon='warning'):
+                return
+        else:
+            if not messagebox.askyesno("Defekte Datei entfernen",
+                f"eggs-Datei ist defekt ({size} Bytes) und wird entfernt.\n"
+                f"Pfad: {eggs_path}\n\nDanach 'fresh-eggs installieren' klicken.",
+                icon='warning'):
+                return
+        try:
+            import subprocess as _sp
+            r = _sp.run(["rm", "-f", eggs_path], capture_output=True, text=True)
+            if r.returncode == 0:
+                self.log_to(self.eggs_log,
+                    f"✅ {eggs_path} entfernt.\n"
+                    "Bitte jetzt 'fresh-eggs installieren' klicken.\n")
+                self._eggs_check_status()
+            else:
+                self.log_to(self.eggs_log, f"❌ Fehler: {r.stderr}\n")
+        except Exception as e:
+            self.log_to(self.eggs_log, f"❌ Fehler: {e}\n")
 
 
     # ══════════════════════════════════════════════════════════════════════
@@ -2871,3 +2926,8 @@ echo "Fertig: $(eggs --version 2>/dev/null || echo installiert)"
         answer = "j" if self.mint_prep_ventoy.get() else "n"
         cmd = f'echo "{answer}" | bash "{script}"'
         self.run_shell_async(cmd, log_w)
+
+
+def import_os_path_exists(p):
+    """Prüft ob Pfad existiert. Rückwärtskompatibel nach Refactoring."""
+    return os.path.exists(p)

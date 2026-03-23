@@ -118,6 +118,44 @@ class GuiBase:
         except Exception as e:
             messagebox.showerror("Fehler", str(e))
 
+    def make_scrollable_tab(self, nb, title: str):
+        """
+        Erstellt einen Tab mit scrollbarem Inhalt (Canvas + Scrollbar).
+        Gibt (tab_outer, content_frame) zurück – Widgets in content_frame packen.
+        """
+        T = self.theme
+        outer = ttk.Frame(nb)
+        nb.add(outer, text=title)
+        canvas = tk.Canvas(outer, bg=T["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=T["bg"])
+        win = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfig(win, width=e.width))
+        # Maus-Scrolling – rekursiv für Canvas + alle Kinder
+        def _scroll(ev):
+            if ev.delta:
+                canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
+            elif ev.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif ev.num == 5:
+                canvas.yview_scroll(1, "units")
+        def _bind_rec(w):
+            w.bind("<MouseWheel>", _scroll, add="+")
+            w.bind("<Button-4>",   _scroll, add="+")
+            w.bind("<Button-5>",   _scroll, add="+")
+            for c in w.winfo_children():
+                _bind_rec(c)
+        _bind_rec(canvas)
+        # Neue Kinder nach dem Aufbau auch binden
+        inner.bind("<Configure>", lambda e: _bind_rec(canvas), add="+")
+        return outer, inner
+
     def make_log_widget(self, parent, height=10) -> scrolledtext.ScrolledText:
         T = self.theme
         w = scrolledtext.ScrolledText(parent, height=height, state='disabled',
@@ -138,8 +176,13 @@ class GuiBase:
             try:
                 env = os.environ.copy()
                 env['TERM'] = 'xterm-256color'
+                # Explizit bash nutzen (nicht /bin/sh) – wichtig für {}, $(()), etc.
+                if isinstance(command, str):
+                    cmd_args = ['/bin/bash', '-c', command]
+                else:
+                    cmd_args = command
                 proc = subprocess.Popen(
-                    command, shell=True,
+                    cmd_args,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, env=env, bufsize=1
                 )
