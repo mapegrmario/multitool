@@ -2752,40 +2752,58 @@ echo "Fertig: $(eggs --version 2>/dev/null || echo installiert)"
                    command=lambda: self._mint_run_info(log_w)).pack(side='right', padx=4)
 
     def _mint_run_info(self, log_w):
+        """Info-Tab: Nutzt app.all_drives (bereits korrekt gescannt) statt DriveDetector."""
         self.clear_log(log_w)
         def worker():
             mod = self._mint_import()
-            if not mod:
-                self._mint_log_stream(log_w, "❌ mint_full_installer.py nicht gefunden.\n")
-                return
             try:
                 import platform as _plat
+                ver = mod.VERSION if mod else "3.2"
                 self._mint_log_stream(log_w,
-                    f"=== Linux USB Ultimate Installer v{mod.VERSION} ===\n\n"
+                    f"=== Linux USB Ultimate Installer v{ver} ===\n\n"
                     f"System:      {_plat.system()} {_plat.release()}\n"
                     f"Architektur: {_plat.machine()}\n\n"
                     f"=== Erkannte Laufwerke ===\n")
-                drives = mod.DriveDetector.get_all_drives()
+
+                # Eigene DriveScanner-Ergebnisse nutzen (korrekt via lsblk -b -J)
+                drives = getattr(self.app, "all_drives", [])
                 if drives:
                     for d in drives:
+                        sys_marker = " [SYSTEM]" if d.is_system_drive else ""
                         self._mint_log_stream(log_w,
-                            f"\n  {d.path}\n"
-                            f"    Typ:    {d.type.value.upper()}\n"
+                            f"\n  {d.device}{sys_marker}\n"
                             f"    Modell: {d.model}\n"
-                            f"    Größe:  {d.size_str}\n"
-                            f"    Mounts: {', '.join(d.mount_points) or '–'}\n")
+                            f"    Typ:    {d.get_type_label()}\n"
+                            f"    Größe:  {d.get_size_human()}\n"
+                            f"    Mount:  {d.mount_point or '–'}\n")
                 else:
-                    self._mint_log_stream(log_w, "  Keine Laufwerke gefunden.\n")
+                    self._mint_log_stream(log_w,
+                        "  Keine Laufwerke gefunden.\n"
+                        "  Tipp: Laufwerke-Tab öffnen und 🔄 drücken.\n")
 
-                ventoy = mod.VentoyManager()
+                # Ventoy prüfen
+                ventoy_ok = os.path.isdir("/opt/ventoy")
+                ventoy_path = "/opt/ventoy" if ventoy_ok else None
+                for p in ["/usr/local/ventoy", os.path.expanduser("~/ventoy")]:
+                    if os.path.isdir(p):
+                        ventoy_ok = True
+                        ventoy_path = p
+                        break
+                fresh_ok = (ventoy_path and
+                            os.path.isfile(os.path.join(ventoy_path, "plugin", "fresh_eggs.sh")))
+
                 self._mint_log_stream(log_w,
                     f"\n=== Ventoy ===\n"
-                    f"  Status:     {'✅ verfügbar' if ventoy.available else '❌ nicht gefunden'}\n"
-                    f"  Pfad:       {ventoy.ventoy_path or '–'}\n"
-                    f"  Fresh Eggs: {'✅ verfügbar' if ventoy.fresh_eggs_available else '❌ nicht gefunden'}\n")
+                    f"  Status:     {'✅ verfügbar' if ventoy_ok else '❌ nicht gefunden'}\n"
+                    f"  Pfad:       {ventoy_path or '–'}\n"
+                    f"  Fresh Eggs: {'✅ verfügbar' if fresh_ok else '❌ nicht gefunden'}\n")
 
+                # mint_full_installer verfügbar?
+                mint_ok = mod is not None
                 self._mint_log_stream(log_w,
-                    f"\n=== Prüfsummen ===\n"
+                    f"\n=== mint_full_installer ===\n"
+                    f"  Status: {'✅ geladen' if mint_ok else '❌ nicht gefunden'}\n\n"
+                    f"=== Prüfsummen ===\n"
                     f"  MD5, SHA1, SHA256, SHA512 – alle verfügbar\n\n"
                     f"=== Installationsmodi ===\n"
                     f"  1. DD-Modus     – ISO schreiben + Verifikation\n"

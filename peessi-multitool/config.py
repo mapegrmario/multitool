@@ -11,7 +11,7 @@ import getpass
 import pwd
 from pathlib import Path
 
-VERSION = "1.0 Beta"
+VERSION = "1.0 Alpha"
 
 # ── Benutzer & Pfade ──────────────────────────────────────────────────────────
 def get_original_user() -> str:

@@ -1201,7 +1201,7 @@ class NetworkTab(GuiBase):
         self._build_connections(nb)
         self._build_wlan_passwords(nb)
         self._refresh_interfaces()
-        self._refresh_connections()
+        # Verbindungen werden per root.after() im _build_connections geladen
 
     def _build_interfaces(self, nb):
         T   = self.theme
@@ -1252,20 +1252,95 @@ class NetworkTab(GuiBase):
         nb.add(tab, text="🔌 Verbindungen")
         pane = tk.Frame(tab, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=12, pady=10)
+
+        # Status-Label
+        self.conn_status_lbl = tk.Label(pane, text="",
+            bg=T["bg"], fg=T["fg_dim"], font=('Arial', 9))
+        self.conn_status_lbl.pack(anchor='w', pady=(0, 4))
+
         ccols = ('Proto', 'Lokal', 'Remote', 'Status', 'PID/Prozess')
-        self.conn_tree = ttk.Treeview(pane, columns=ccols, show='headings', height=20)
-        cw = {'Proto':55,'Lokal':180,'Remote':180,'Status':100,'PID/Prozess':150}
+        tree_f = tk.Frame(pane, bg=T["bg"])
+        tree_f.pack(fill='both', expand=True)
+        csb = ttk.Scrollbar(tree_f, orient='vertical')
+        csb.pack(side='right', fill='y')
+        hsb = ttk.Scrollbar(tree_f, orient='horizontal')
+        hsb.pack(side='bottom', fill='x')
+        self.conn_tree = ttk.Treeview(tree_f, columns=ccols, show='headings',
+                                       yscrollcommand=csb.set,
+                                       xscrollcommand=hsb.set)
+        csb.config(command=self.conn_tree.yview)
+        hsb.config(command=self.conn_tree.xview)
+        cw = {'Proto':60,'Lokal':200,'Remote':200,'Status':110,'PID/Prozess':160}
         for c in ccols:
-            self.conn_tree.heading(c, text=c)
-            self.conn_tree.column(c, width=cw.get(c, 120))
-        csb = ttk.Scrollbar(pane, orient='vertical', command=self.conn_tree.yview)
-        self.conn_tree.configure(yscrollcommand=csb.set)
-        f = tk.Frame(pane, bg=T["bg"])
-        f.pack(fill='both', expand=True)
-        self.conn_tree.pack(in_=f, side='left', fill='both', expand=True)
-        csb.pack(in_=f, side='right', fill='y')
-        ttk.Button(pane, text="🔄 Aktualisieren",
-                   command=self._refresh_connections).pack(anchor='w', pady=(6, 0))
+            self.conn_tree.heading(c, text=c,
+                command=lambda col=c: self._conn_sort(col))
+            self.conn_tree.column(c, width=cw.get(c, 120), minwidth=50)
+        self.conn_tree.pack(side='left', fill='both', expand=True)
+        btn_f = tk.Frame(pane, bg=T["bg"])
+        btn_f.pack(fill='x', pady=(6, 0))
+        ttk.Button(btn_f, text="🔄 Aktualisieren",
+                   command=self._refresh_connections).pack(side='left')
+        ttk.Button(btn_f, text="📋 Kopieren",
+                   command=self._copy_connections).pack(side='left', padx=6)
+
+        # Auto-Refresh beim Tab-Wechsel (Verbindungen-Tab wird sichtbar)
+        tab.bind("<Visibility>", lambda e: self.root.after(100, self._refresh_connections))
+        # Fallback: nach Aufbau einmalig laden
+        self.root.after(800, self._refresh_connections)
+
+    def _conn_sort(self, col):
+        """Sortiert die Verbindungsliste nach Spalte."""
+        try:
+            data = [(self.conn_tree.set(child, col), child)
+                    for child in self.conn_tree.get_children('')]
+            data.sort()
+            for i, (_, child) in enumerate(data):
+                self.conn_tree.move(child, '', i)
+        except Exception:
+            pass
+
+    def _copy_connections(self):
+        """Kopiert alle Verbindungen als Text in die Zwischenablage."""
+        try:
+            lines = []
+            cols = ('Proto', 'Lokal', 'Remote', 'Status', 'PID/Prozess')
+            lines.append("\t".join(cols))
+            for child in self.conn_tree.get_children():
+                vals = self.conn_tree.item(child)['values']
+                lines.append("\t".join(str(v) for v in vals))
+            text = "\n".join(lines)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.root.update()
+        except Exception as e:
+            messagebox.showerror("Fehler", str(e))
+
+    def _conn_sort(self, col):
+        """Sortiert die Verbindungsliste nach Spalte."""
+        try:
+            data = [(self.conn_tree.set(child, col), child)
+                    for child in self.conn_tree.get_children('')]
+            data.sort()
+            for i, (_, child) in enumerate(data):
+                self.conn_tree.move(child, '', i)
+        except Exception:
+            pass
+
+    def _copy_connections(self):
+        """Kopiert alle Verbindungen als Text in die Zwischenablage."""
+        try:
+            lines = []
+            cols = ('Proto', 'Lokal', 'Remote', 'Status', 'PID/Prozess')
+            lines.append("\t".join(cols))
+            for child in self.conn_tree.get_children():
+                vals = self.conn_tree.item(child)['values']
+                lines.append("\t".join(str(v) for v in vals))
+            text = "\n".join(lines)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.root.update()
+        except Exception as e:
+            messagebox.showerror("Fehler", str(e))
 
     def _refresh_interfaces(self):
         for row in self.iface_tree.get_children():
@@ -1318,67 +1393,71 @@ class NetworkTab(GuiBase):
         threading.Thread(target=worker, daemon=True).start()
 
     def _refresh_connections(self):
-        for row in self.conn_tree.get_children():
-            self.conn_tree.delete(row)
+        """Lädt Verbindungen asynchron – blockiert die GUI nicht."""
         import re as _re
 
         def _parse_ss_line(line):
-            """Parst eine ss -tunp Zeile robust."""
-            # Felder: Netid State Recv-Q Send-Q Local Peer [Process]
             parts = line.split()
             if len(parts) < 5:
                 return None
-            proto = parts[0]
-            state = parts[1]
-            # Local und Peer sind Spalten 4 und 5 (Index 4,5 in 0-basiert)
-            local  = parts[4] if len(parts) > 4 else ""
-            remote = parts[5] if len(parts) > 5 else ""
-            # Prozess aus users-Feld
+            proto     = parts[0]
+            state     = parts[1]
+            local     = parts[4] if len(parts) > 4 else ""
+            remote    = parts[5] if len(parts) > 5 else ""
             proc_info = ""
             pm = _re.search(r'users:\(\("([^"]+)",pid=(\d+)', line)
             if pm:
                 proc_info = f"{pm.group(2)}/{pm.group(1)}"
             return proto, local, remote, state, proc_info
 
-        try:
-            r = subprocess.run(["ss", "-tunp"], capture_output=True, text=True, timeout=10)
-            lines = r.stdout.splitlines()
-            if not lines:
-                raise RuntimeError("ss lieferte keine Ausgabe")
-            inserted = 0
-            for line in lines:
-                line = line.rstrip()
-                # Header-Zeile überspringen
-                if line.startswith("Netid") or line.startswith("State"):
-                    continue
-                if not line:
-                    continue
-                result = _parse_ss_line(line)
-                if result:
-                    self.conn_tree.insert("", "end", values=result)
-                    inserted += 1
-            if inserted == 0:
-                # Fallback: netstat
-                r2 = subprocess.run(["netstat", "-tunp"], capture_output=True,
-                                    text=True, timeout=10)
-                for line in r2.stdout.splitlines()[2:]:
-                    parts = line.split()
-                    if len(parts) < 6:
-                        continue
-                    proto  = parts[0]
-                    local  = parts[3]
-                    remote = parts[4]
-                    state  = parts[5] if len(parts) > 5 else ""
-                    proc   = parts[6] if len(parts) > 6 else ""
-                    self.conn_tree.insert("", "end",
-                        values=(proto, local, remote, state, proc))
-        except Exception as e:
+        def worker():
+            rows = []
             try:
-                self.log_to(self.iface_detail,
-                    f"Verbindungen: Fehler beim Laden ({e})\n"
-                    "Tipp: Programm benötigt Root-Rechte für Prozess-Info.\n")
-            except Exception:
-                pass
+                r = subprocess.run(["ss", "-tunp"],
+                                   capture_output=True, text=True, timeout=10)
+                for line in r.stdout.splitlines():
+                    line = line.rstrip()
+                    if not line:
+                        continue
+                    if line.startswith(("Netid", "State")):
+                        continue
+                    result = _parse_ss_line(line)
+                    if result:
+                        rows.append(result)
+
+                # Fallback: netstat (deutsche State-Namen wie VERBUNDEN)
+                if not rows:
+                    r2 = subprocess.run(["netstat", "-tunp"],
+                                        capture_output=True, text=True, timeout=10)
+                    for line in r2.stdout.splitlines():
+                        parts = line.split()
+                        # Daten-Zeilen: tcp/udp als erstes Feld
+                        if not parts or parts[0] not in ("tcp", "tcp6", "udp", "udp6"):
+                            continue
+                        if len(parts) < 5:
+                            continue
+                        proto  = parts[0]
+                        local  = parts[3]
+                        remote = parts[4]
+                        state  = parts[5] if len(parts) > 5 else ""
+                        proc   = parts[6] if len(parts) > 6 else ""
+                        rows.append((proto, local, remote, state, proc))
+            except Exception as e:
+                rows = []
+
+            def update_ui():
+                for row in self.conn_tree.get_children():
+                    self.conn_tree.delete(row)
+                for row in rows:
+                    self.conn_tree.insert("", "end", values=row)
+                lbl = getattr(self, "conn_status_lbl", None)
+                if lbl:
+                    ts = __import__("datetime").datetime.now().strftime("%H:%M:%S")
+                    lbl.config(text=f"{len(rows)} Verbindungen  |  Stand: {ts}")
+
+            self.root.after(0, update_ui)
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1961,6 +2040,11 @@ class SettingsTab(GuiBase):
         pane = tk.Frame(pane_outer, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=20, pady=16)
 
+        # Alpha-Hinweis
+        tk.Label(pane,
+            text="🚧 Version 1.0 Alpha – Einstellungen werden unter ~/.config/peessi-multitool/ gespeichert",
+            bg=T["bg"], fg=T["fg_dim"], font=('Arial', 8, 'italic')).pack(anchor='w', pady=(0, 6))
+
         def section(text):
             tk.Frame(pane, bg=T["border"], height=1).pack(fill='x', pady=(14, 4))
             tk.Label(pane, text=text, bg=T["bg"], fg=T["accent"],
@@ -2213,6 +2297,10 @@ class AboutTab(GuiBase):
         email_lbl.bind("<Button-1>", lambda e: _open_email())
         tk.Label(info, text="Lizenz: GPLv3 / MIT  ·  Linux Mint / Debian / Ubuntu",
                  font=('Arial', 10), bg=T["bg"], fg=T["fg_dim"]).pack(anchor='w', pady=(4, 0))
+        tk.Label(info,
+                 text="🚧 Version 1.0 Alpha – Entwicklungsversion",
+                 font=('Arial', 9, 'italic'), bg=T["bg"],
+                 fg=T["warning"]).pack(anchor='w', pady=(2, 0))
 
         tk.Frame(inner, bg=T["border"], height=1).pack(fill='x', pady=16)
 
@@ -2264,6 +2352,30 @@ class AboutTab(GuiBase):
                 _wb.open(u)
 
         tk.Frame(inner, bg=T["border"], height=1).pack(fill='x', pady=16)
+
+        # ── Haftungsausschluss ───────────────────────────────────────────────
+        disc_f = ttk.LabelFrame(inner, text=" ⚠️ Haftungsausschluss / Disclaimer ", padding=10)
+        disc_f.pack(fill='x', pady=(0, 12))
+        tk.Label(disc_f,
+            text=(
+                "Dieses Programm wird OHNE JEDE GEWÄHRLEISTUNG bereitgestellt, auch ohne die\n"
+                "implizite Gewährleistung der MARKTGÄNGIGKEIT oder der EIGNUNG FÜR EINEN\n"
+                "BESTIMMTEN ZWECK. Die Verwendung erfolgt auf eigenes Risiko.\n\n"
+                "⚠️  Operationen wie Löschen, Formatieren, ISO schreiben und Klonen sind\n"
+                "    IRREVERSIBEL und führen zu DATENVERLUST. Stets Backups erstellen!\n\n"
+                "Der Autor übernimmt keine Haftung für Datenverlust, Hardwareschäden oder\n"
+                "sonstige Schäden, die durch die Nutzung dieses Programms entstehen.\n\n"
+                "Drittanbieter-Software (penguins-eggs, Ventoy, fresh-eggs) unterliegt\n"
+                "den jeweiligen Lizenzen und Haftungsausschlüssen der Autoren."
+            ),
+            bg=T["bg"], fg=T["warning"], font=('Arial', 9), justify='left').pack(anchor='w')
+
+        # ── Status: Alpha ────────────────────────────────────────────────────
+        tk.Label(inner,
+            text="🚧  Version 1.0 Alpha – Entwicklungsversion. Nicht für produktiven Einsatz empfohlen.",
+            font=('Arial', 9, 'bold'), bg=T["bg"], fg=T["danger"]).pack(anchor='w', pady=(0, 8))
+
+        tk.Frame(inner, bg=T["border"], height=1).pack(fill='x', pady=(4, 12))
         tk.Label(inner,
             text="Module: config · models · database · security · smart_engine ·\n"
                  "        wipe_engine · recovery_engine · gui_base · gui_drives · gui_system",
@@ -2320,12 +2432,36 @@ class HilfeTab(GuiBase):
             ("prepare_system.sh", "Bereitet das System für USB-Installer vor. Installiert Partitionierungs- und Dateisystem-Tools, optional Ventoy und Fresh-Eggs-Plugin."),
             ("Deinstallation", "sudo /usr/local/lib/peessi-multitool/uninstall.sh"),
         ]),
+        ("⚠️ Haftungsausschluss", [
+            ("Keine Gewährleistung",
+             "Dieses Programm wird OHNE JEDE GEWÄHRLEISTUNG bereitgestellt, weder ausdrücklich "
+             "noch implizit. Die Nutzung erfolgt vollständig auf eigenes Risiko."),
+            ("Datenverlust-Risiko",
+             "⚠️ Operationen wie Löschen (Wipe), ISO schreiben (dd), Formatieren und Klonen "
+             "sind IRREVERSIBEL. Alle Daten auf dem Zielgerät werden unwiderruflich gelöscht. "
+             "Erstellen Sie IMMER ein Backup bevor Sie fortfahren!"),
+            ("Haftungsbeschränkung",
+             "Der Autor (Mario Peeß) übernimmt keine Haftung für Datenverlust, "
+             "Hardwareschäden, Systemausfälle oder sonstige direkte oder indirekte Schäden, "
+             "die durch die Nutzung dieses Programms entstehen."),
+            ("Drittanbieter-Software",
+             "penguins-eggs, fresh-eggs (Piero Proietti, GPLv3) und Ventoy (Ventoy-Team, GPLv3) "
+             "sind externe Programme mit eigenen Lizenzen und Haftungsausschlüssen."),
+            ("Alpha-Version",
+             "🚧 Dies ist eine Alpha-Version (1.0 Alpha). Sie kann Fehler enthalten und "
+             "ist nicht für produktiven Einsatz auf Produktivsystemen empfohlen."),
+        ]),
         ("📞 Hilfe & Kontakt", [
             ("Autor", "Mario Peeß, Großenhain  –  mapegr@mailbox.org"),
             ("Lizenz", "GPLv3 / MIT (kompatibel)"),
             ("Drittanbieter", "penguins-eggs und fresh-eggs: Piero Proietti (GPLv3) – https://github.com/pieroproietti/penguins-eggs\nVentoy: Ventoy-Team (GPLv3) – https://github.com/ventoy/Ventoy"),
             ("Fehler melden", "Bei Fehlern bitte per E-Mail melden. Log-Datei: ~/peessi_multitool_fehler.log"),
-            ("Version", "1.0 Beta  –  Linux Mint / Debian / Ubuntu"),
+            ("Version", "1.0 Alpha  –  Linux Mint / Debian / Ubuntu  (Entwicklungsversion)"),
+            ("Haftungsausschluss",
+             "Dieses Programm wird ohne jede Gewährleistung bereitgestellt. "
+             "Alle destruktiven Operationen (Löschen, Formatieren, Schreiben) sind irreversibel. "
+             "Der Autor haftet nicht für Datenverlust oder Schäden. "
+             "Backups immer vorher erstellen!"),
         ]),
     ]
 
