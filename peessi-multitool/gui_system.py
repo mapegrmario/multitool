@@ -1282,61 +1282,128 @@ sync; sleep 1; systemctl poweroff
         self._eggs_iso_name_var = tk.StringVar(value="PeessiLive")
         ttk.Entry(name_row, textvariable=self._eggs_iso_name_var, width=30).pack(side='left')
 
-        # ── Zielverzeichnis ───────────────────────────────────────────────
-        dest_f = ttk.LabelFrame(inner, text=" Zielverzeichnis ", padding=8)
+        # ── Zielverzeichnis + Temp ────────────────────────────────────────
+        dest_f = ttk.LabelFrame(inner, text=" ISO-Zielverzeichnis ", padding=8)
         dest_f.pack(fill='x', pady=(0, 8))
-        tk.Label(dest_f, text=(
-            "Wähle einen gemounteten Datenträger aus der Liste oder klicke 📂."
-        ), bg=T["bg"], fg=T["fg_dim"], font=('Arial', 9)).pack(anchor='w', pady=(0, 4))
-        dest_row = tk.Frame(dest_f, bg=T["bg"])
-        dest_row.pack(fill='x')
-        self._eggs_dest_var = tk.StringVar(value="/home/eggs")
-        self._eggs_dest_cb  = ttk.Combobox(dest_row, textvariable=self._eggs_dest_var,
-                                            font=('Arial', 10), width=42)
-        self._eggs_dest_cb.pack(side='left', padx=(0, 6))
 
-        def _refresh_dest():
-            """Alle gemounteten Laufwerke als Zieloptionen anzeigen."""
-            import subprocess as _sp
+        def _scan_mounts():
+            import subprocess as _sp, json as _jn
             opts = ["/home/eggs"]
             try:
-                # /media/ und /mnt/ + alle Nicht-System-Laufwerke
                 r = _sp.run(
-                    ["df", "-h", "--output=target"],
-                    capture_output=True, text=True, timeout=5)
-                for line in r.stdout.splitlines()[1:]:
-                    p = line.strip()
-                    if not p:
-                        continue
-                    if any(p.startswith(x) for x in
-                           ["/media/", "/mnt/", "/run/media/"]):
-                        opts.append(p)
-                # Zusätzlich: lsblk Mountpoints
-                r2 = _sp.run(
-                    ["lsblk", "-o", "MOUNTPOINT", "-n", "-r"],
-                    capture_output=True, text=True, timeout=5)
-                for line in r2.stdout.splitlines():
-                    p = line.strip()
-                    if p and p not in opts and any(
-                            p.startswith(x) for x in
-                            ["/media/", "/mnt/", "/run/media/"]):
-                        opts.append(p)
+                    ["lsblk", "-J", "-o",
+                     "NAME,MOUNTPOINT,MOUNTPOINTS,SIZE,LABEL,TYPE"],
+                    capture_output=True, text=True, timeout=8)
+                if r.returncode == 0:
+                    data = _jn.loads(r.stdout)
+                    def _col(devs):
+                        for d in devs:
+                            mps = d.get("mountpoints") or []
+                            if isinstance(mps, str):
+                                mps = [mps]
+                            mp1 = d.get("mountpoint") or ""
+                            if mp1 and mp1 not in mps:
+                                mps.append(mp1)
+                            for mp in mps:
+                                if not mp:
+                                    continue
+                                label = d.get("label") or ""
+                                size  = d.get("size") or ""
+                                entry = f"{mp}  [{label or d.get('name','')}  {size}]"                                         if (label or size) else mp
+                                existing = [o.split()[0] for o in opts]
+                                if mp not in existing:
+                                    opts.append(entry)
+                            _col(d.get("children") or [])
+                    _col(data.get("blockdevices", []))
             except Exception:
                 pass
-            self._eggs_dest_cb['values'] = opts
-            # Aktuellen Wert beibehalten wenn möglich
-            cur = self._eggs_dest_var.get()
-            if cur not in opts:
-                self._eggs_dest_cb.current(0)
+            try:
+                with open("/proc/mounts") as _f:
+                    for line in _f:
+                        parts = line.split()
+                        if len(parts) < 2:
+                            continue
+                        mp = parts[1]
+                        existing = [o.split()[0] for o in opts]
+                        if mp not in existing and any(
+                                mp.startswith(x) for x in
+                                ["/media/", "/mnt/", "/run/media/"]):
+                            opts.append(mp)
+            except Exception:
+                pass
+            return opts
 
-        _refresh_dest()
-        ttk.Button(dest_row, text="🔄", width=3,
+        lw_lbl = tk.Label(dest_f, text="Erkannte Laufwerke:",
+                          bg=T["bg"], fg=T["fg_dim"], font=('Arial', 9))
+        lw_lbl.pack(anchor='w')
+        lw_f = tk.Frame(dest_f, bg=T["bg"])
+        lw_f.pack(fill='x', pady=(2, 6))
+        lw_sb = ttk.Scrollbar(lw_f, orient='vertical')
+        lw_sb.pack(side='right', fill='y')
+        self._eggs_lw_list = tk.Listbox(
+            lw_f, height=4, font=('Monospace', 9),
+            bg=T.get("bg2", T["bg"]), fg=T["fg"],
+            selectbackground=T["accent"],
+            yscrollcommand=lw_sb.set)
+        self._eggs_lw_list.pack(side='left', fill='x', expand=True)
+        lw_sb.config(command=self._eggs_lw_list.yview)
+
+        dest_row = tk.Frame(dest_f, bg=T["bg"])
+        dest_row.pack(fill='x')
+        tk.Label(dest_row, text="Ziel:", bg=T["bg"], fg=T["fg"],
+                 font=('Arial', 9)).pack(side='left', padx=(0, 4))
+        self._eggs_dest_var = tk.StringVar(value="/home/eggs")
+        self._eggs_dest_cb  = ttk.Combobox(dest_row, textvariable=self._eggs_dest_var,
+                                            font=('Arial', 10), width=45)
+        self._eggs_dest_cb.pack(side='left', padx=(0, 4))
+
+        def _refresh_dest():
+            opts = _scan_mounts()
+            self._eggs_dest_cb['values'] = opts
+            self._eggs_lw_list.delete(0, 'end')
+            for o in opts:
+                self._eggs_lw_list.insert('end', o)
+            lw_lbl.config(text=f"Erkannte Laufwerke ({len(opts)}):")
+
+        def _on_lw_select(e):
+            sel = self._eggs_lw_list.curselection()
+            if sel:
+                val = self._eggs_lw_list.get(sel[0]).split("[")[0].strip()
+                self._eggs_dest_var.set(val)
+
+        self._eggs_lw_list.bind("<<ListboxSelect>>", _on_lw_select)
+        ttk.Button(dest_row, text="🔄 Laufwerke suchen",
                    command=_refresh_dest).pack(side='left', padx=(0, 4))
         ttk.Button(dest_row, text="📂",
                    command=lambda: self._eggs_dest_var.set(
                        filedialog.askdirectory(title="Zielverzeichnis wählen")
                        or self._eggs_dest_var.get()
                    )).pack(side='left')
+        _refresh_dest()
+
+        # ── Temp-Verzeichnis ──────────────────────────────────────────────
+        tmp_f = ttk.LabelFrame(inner,
+            text=" Temporäres Arbeitsverzeichnis (optional) ", padding=8)
+        tmp_f.pack(fill='x', pady=(0, 8))
+        tk.Label(tmp_f, text=(
+            "eggs legt temporäre Dateien standardmäßig in /tmp an.\n"
+            "Bei großen ISOs (>8 GB) kann das den Systemspeicher füllen.\n"
+            "Hier ein externes Laufwerk angeben – leer = Standard (/tmp)"
+        ), bg=T["bg"], fg=T["fg_dim"], font=('Arial', 9)).pack(anchor='w')
+        tmp_row = tk.Frame(tmp_f, bg=T["bg"])
+        tmp_row.pack(fill='x', pady=(6, 0))
+        tk.Label(tmp_row, text="Temp:", bg=T["bg"], fg=T["fg"],
+                 font=('Arial', 9)).pack(side='left', padx=(0, 4))
+        self._eggs_tmp_var = tk.StringVar(value="")
+        ttk.Entry(tmp_row, textvariable=self._eggs_tmp_var,
+                  width=38).pack(side='left', padx=(0, 4))
+        ttk.Button(tmp_row, text="📂",
+                   command=lambda: self._eggs_tmp_var.set(
+                       filedialog.askdirectory(title="Temp-Verzeichnis wählen")
+                       or self._eggs_tmp_var.get()
+                   )).pack(side='left', padx=(0, 4))
+        ttk.Button(tmp_row, text="✖",
+                   command=lambda: self._eggs_tmp_var.set("")).pack(side='left')
 
         # ── Optionen ──────────────────────────────────────────────────────
         opt_f = ttk.LabelFrame(inner, text=" Optionen ", padding=8)
@@ -1433,9 +1500,17 @@ sync; sleep 1; systemctl poweroff
             "ISO-Erstellung starten? (kann 15–60 Min dauern)"):
             return
 
+        tmp_dir = self._eggs_tmp_var.get().strip() if hasattr(self, "_eggs_tmp_var") else ""
         parts = [
             "set -e",
             f"export PATH=/usr/local/bin:/usr/bin:/bin:$PATH",
+        ]
+        if tmp_dir and tmp_dir != "/tmp":
+            parts.append(f"mkdir -p '{tmp_dir}'")
+            parts.append(f"export TMPDIR='{tmp_dir}'")
+            parts.append(f"export TMP='{tmp_dir}'")
+            parts.append(f"echo 'Temp-Verzeichnis: {tmp_dir}'")
+        parts += [
             f"mkdir -p '{dest}'",
         ]
         if clean:
