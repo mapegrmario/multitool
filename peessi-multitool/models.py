@@ -94,8 +94,11 @@ class DriveScanner:
     def scan(self) -> List[DriveInfo]:
         drives = []
         try:
+            # TRAN-Feld: usb/sata/nvme/... – zuverlässigste USB-Erkennung
+            # HOTPLUG: 1 bei Wechseldatenträgern
             r = subprocess.run(
-                ['lsblk', '-J', '-b', '-o', 'NAME,MODEL,SIZE,FSTYPE,MOUNTPOINT,TYPE,RM'],
+                ['lsblk', '-J', '-b', '-o',
+                 'NAME,MODEL,SIZE,FSTYPE,MOUNTPOINT,TYPE,RM,HOTPLUG,TRAN,LABEL'],
                 capture_output=True, text=True, timeout=10
             )
             if r.returncode == 0:
@@ -104,30 +107,59 @@ class DriveScanner:
                         d = self._make(dev)
                         if d:
                             drives.append(d)
+            # Fallback: älteres lsblk ohne TRAN/HOTPLUG
+            elif not drives:
+                r2 = subprocess.run(
+                    ['lsblk', '-J', '-b', '-o', 'NAME,MODEL,SIZE,FSTYPE,MOUNTPOINT,TYPE,RM'],
+                    capture_output=True, text=True, timeout=10
+                )
+                if r2.returncode == 0:
+                    for dev in json.loads(r2.stdout).get('blockdevices', []):
+                        if dev.get('type') == 'disk':
+                            d = self._make(dev)
+                            if d:
+                                drives.append(d)
             self.sec.log_action("DRIVE_SCAN", details=f"{len(drives)} drives")
         except Exception as e:
             self.sec.log_action("DRIVE_SCAN_ERROR", details=str(e))
         return drives
 
     def _is_usb(self, name: str) -> bool:
+        """USB-Erkennung über mehrere Methoden."""
+        # 1. /sys/block/<name> Symlink-Pfad (zuverlässig)
         try:
-            return 'usb' in os.path.realpath(f'/sys/block/{name}')
+            real = os.path.realpath(f'/sys/block/{name}')
+            if 'usb' in real:
+                return True
         except Exception:
-            return False
+            pass
+        # 2. TRAN-Feld aus lsblk (wird von _make übergeben)
+        # 3. removable-Flag als Fallback
+        return False
 
     def _make(self, d: dict) -> Optional[DriveInfo]:
         try:
             name = d.get('name', '')
             if not name:
                 return None
+            # USB-Erkennung: TRAN-Feld + /sys-Pfad + RM/HOTPLUG
+            tran      = str(d.get('tran') or '').lower()
+            hotplug   = str(d.get('hotplug') or '0')
+            rm_val    = str(d.get('rm') or '0')
+            is_rm     = rm_val in ('1', 'true', 'True')
+            is_hot    = hotplug in ('1', 'true', 'True')
+            is_usb_sys = self._is_usb(name)
+            is_usb    = tran == 'usb' or is_usb_sys or (is_rm and is_hot)
+            removable = is_rm or is_hot or tran == 'usb'
+
             return DriveInfo(
                 device      = f"/dev/{name}",
-                model       = d.get('model') or "Unbekannt",
+                model       = (d.get('model') or d.get('label') or name).strip() or "Unbekannt",
                 size        = d.get('size', 0),
-                fs_type     = d.get('fstype', ''),
-                mount_point = d.get('mountpoint', ''),
-                removable   = d.get('rm', '0') == '1',
-                is_usb      = self._is_usb(name),
+                fs_type     = d.get('fstype', '') or '',
+                mount_point = d.get('mountpoint', '') or '',
+                removable   = removable,
+                is_usb      = is_usb,
             )
         except Exception as e:
             self.sec.log_action("DRIVE_CREATE_ERROR", details=str(e))

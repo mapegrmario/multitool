@@ -1,35 +1,86 @@
-# 🛠️ Peeßi's System Multitool – Version 1.0 Alpha
+# 🛠️ Peeßi's System Multitool – Version 4.1
 
-> **🚧 Alpha-Version – nicht für produktiven Einsatz auf Produktivsystemen empfohlen.**
+![Vorschau](vorschau1.png) # diese zeile bitte stehen lassen
 
-**Autor:** Mario Peeß, Großenhain | **Kontakt:** mapegr@mailbox.org  
-**Lizenz:** GPLv3 / MIT (kompatibel) | **System:** Linux Mint / Debian / Ubuntu
+> **🚧 Entwicklungsversion (Alpha) – nicht für produktiven Einsatz auf Produktivsystemen empfohlen.**
+
+**Autor:** Mario Peeß, Großenhain  
+**Kontakt:** mapegr@mailbox.org  
+**Lizenz:** GPLv3 / MIT (kompatibel)  
+**System:** Linux Mint / Debian / Ubuntu  
 
 ---
 
 ## ⚠️ Haftungsausschluss
 
-**Ohne jede Gewährleistung.** Nutzung auf eigenes Risiko.
+**Dieses Programm wird OHNE JEDE GEWÄHRLEISTUNG bereitgestellt**, weder ausdrücklich noch implizit,
+einschließlich der impliziten Gewährleistung der Marktgängigkeit oder Eignung für einen bestimmten Zweck.
 
-- Löschen, Formatieren, ISO schreiben, Klonen → **IRREVERSIBEL, Datenverlust!**
-- Vor jeder Operation **Backup erstellen**
-- Kein Haftung für Datenverlust oder Schäden
+**Die Nutzung erfolgt vollständig auf eigenes Risiko.**
+
+- Operationen wie **Löschen (Wipe), ISO schreiben (dd), Formatieren und Klonen** sind **IRREVERSIBEL**
+- Alle Daten auf dem Zielgerät werden **unwiderruflich gelöscht**
+- **Immer Backup erstellen** bevor Sie fortfahren!
+- Der Autor übernimmt **keine Haftung** für Datenverlust, Hardwareschäden oder sonstige Schäden
 
 ---
 
-## Funktionen (Übersicht)
+## Übersicht
 
-| Tab | Funktion |
+Peeßi's System Multitool ist eine grafische Systemverwaltungs-Anwendung für Linux.
+Sie fasst Werkzeuge für Datenrettung, Laufwerksverwaltung, Systempflege,
+Netzwerkanalyse und Diagnose in einer einheitlichen Oberfläche zusammen.
+
+---
+
+## Funktionen
+
+### 💾 Laufwerke
+| Funktion | Beschreibung |
 |---|---|
-| 💾 **Laufwerke** | Datenrettung (ddrescue+photorec), Sicheres Löschen (dd/DoD/Gutmann/NVMe), SMART-Monitor |
-| 💿 **ISO-Brenner** | SHA256-Prüfung, Verifikation, 🔁 USB-Clone direkt integriert |
-| 🍃 **Mint-Installer** | DD/Full/Ventoy/Clone-Modi, Laufwerke, Info, Systemvorbereitung |
-| 🐧 **Penguins-Eggs** | Live-ISO erstellen, fresh-eggs, AppImage, calamares, Backup/Restore |
-| 🖥️ **System** | Pflege, Optimierer, Boot-Check, BIOS/EFI, Update+Shutdown, Einmal-Starter |
-| 🌐 **Netzwerk** | Interfaces, Ping, Verbindungen (sortierbar+kopierbar), WLAN-Passwörter |
-| 📋 **Logs & Diagnose** | Viewer, dmesg/syslog/journal, HTML-Systembericht |
-| ❓ **Hilfe** | Vollständige Dokumentation mit Suchfunktion |
-| ⚙️ **Einstellungen** | Theme, Farben, Schriftgrößen, Verhalten |
+| 🔍 Datenrettung | Defekte Laufwerke retten via `ddrescue` + `photorec` |
+| 🧹 Sicheres Löschen | dd, DoD 5220.22-M, Gutmann, ATA/NVMe Secure Erase, Freien Speicher löschen |
+| 📊 SMART-Monitor | Gesundheitsstatus, Temperatur, Verlauf in SQLite |
+| 💿 ISO-Brenner | **Alle Laufwerke wählbar** (inkl. Systemlaufwerke mit Warnung), SHA256-Prüfung, Verifikation |
+| 🔁 USB-Clone | 1:1-Klon mit optionaler cmp-Verifikation (Sub-Tab im ISO-Brenner) |
+| 🔗 Partition einbinden | Dauerhaft via fstab mit automatischem Backup |
+
+### 🖥️ System
+| Funktion | Beschreibung |
+|---|---|
+| Dashboard | Übersicht über CPU, RAM, Swap, Laufwerke, Partitionierung (bunte Balken) |
+| 🧹 Systempflege | apt (Update, Upgrade, Autoremove), Flatpak, Journal, Thumbnail-Cache |
+| ⚡ Optimierer | Kernel-Tuning (BBR, Swappiness), dynamische Swap-Datei, Firefox Policies |
+| 🥾 Boot-Check | fsck für / aktivieren/deaktivieren |
+| ⚙️ BIOS/EFI | Boot-Reihenfolge, Einträge löschen, Timeout, Backup (efibootmgr) |
+| 🔄 Update & Shutdown | Automatische Updates + Herunterfahren |
+| 🚀 Einmal-Starter | Script einmalig beim nächsten Login ausführen |
+
+### 🌐 Netzwerk
+| Funktion | Beschreibung |
+|---|---|
+| Interfaces | IP, MAC, Status aller Netzwerkschnittstellen |
+| 🏓 Ping | Host anpingen (wählbare Anzahl) |
+| 🔌 Verbindungen | Aktive TCP/UDP-Verbindungen (ss), sortierbar, kopierbar |
+| 🔑 WLAN-Passwörter | Gespeicherte Keys aus NetworkManager auslesen |
+
+### 📋 Logs & Diagnose
+| Funktion | Beschreibung |
+|---|---|
+| Log-Viewer | Journal, dmesg, syslog, auth.log mit Suche und Farbmarkierung |
+| 🩺 Diagnose | Vollständiger Systembericht als TXT und HTML |
+
+### ⚙️ Einstellungen
+| Funktion | Beschreibung |
+|---|---|
+| Theme | Light / Dark (Catppuccin Mocha / Standard-Hell) |
+| Schriftgrößen | UI und Monospace separat einstellbar |
+| Farben | Benutzerdefinierte Farben für Haupttext, Akzent, Hintergrund |
+| Fenster | Startgröße wählen (1400×900 bis Maximiert) |
+| Verhalten | Standard-Löschmethode, SMART-Intervall, Benachrichtigungen |
+
+### ℹ️ Über
+Autor, Version, Lizenz, Kontakt, vollständige Funktionsliste.
 
 ---
 
@@ -39,57 +90,25 @@
 sudo bash install-peessi-multitool.sh
 ```
 
-### Update (ohne Neuinstallation)
+**Update:**
 ```bash
 sudo bash update.sh
 ```
 
-### Diagnose bei Problemen
+**Diagnose:**
 ```bash
 sudo bash ~/peessi-analyse.sh
 ```
 
-### Starten / Deinstallieren
+**Starten:**
 ```bash
 peessi-multitool
-sudo /usr/local/lib/peessi-multitool/uninstall.sh
-```
-
----
-
-## Penguins-Eggs reparieren
-
-Falls eggs defekt (wenige Bytes):
-```bash
-# Im Programm: Penguins-Eggs Tab → "🗑 Defekte eggs-Datei entfernen"
-# Dann: "📦 fresh-eggs installieren"
-
-# Oder manuell:
-sudo rm /usr/bin/eggs /usr/local/bin/eggs 2>/dev/null
-cd /tmp && rm -rf fresh-eggs
-git clone https://github.com/pieroproietti/fresh-eggs
-cd fresh-eggs && bash fresh-eggs.sh
 ```
 
 ---
 
 ## Drittanbieter
 
-| Software | Autor | Lizenz |
-|---|---|---|
-| penguins-eggs | Piero Proietti | GPLv3 |
-| fresh-eggs | Piero Proietti | GPLv3 |
-| Ventoy | Ventoy-Team | GPLv3 |
-
----
-
-## Changelog 1.0 Alpha (2026-03)
-
-- Optimierer: Shell-Syntax-Fehler behoben (kein Heredoc mehr)
-- Scrolling: Rekursive Bindung – funktioniert jetzt auf allen Child-Widgets
-- fresh-eggs: Non-interaktive .deb-Installation (DEBIAN_FRONTEND=noninteractive)
-- USB-Clone als Sub-Tab im ISO-Brenner integriert
-- Netzwerk/Verbindungen: asynchron, sortierbar, netstat-Fallback
-- eggs: Dateigröße-Validierung + "Defekte Datei entfernen"-Button
-- Haftungsausschluss in Über-Tab, Hilfe-Tab und README
-- Analyse-Script: 15 Bereiche, vollständiges Log nach ~/
+| Software | Autor | Lizenz | URL |
+|---|---|---|---|
+| Ventoy | Ventoy-Team | GPLv3 | https://github.com/ventoy/Ventoy |

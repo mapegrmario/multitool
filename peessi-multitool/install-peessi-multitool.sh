@@ -18,7 +18,8 @@
 #  Deinstall: sudo /usr/local/lib/peessi-multitool/uninstall.sh
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
+# Kein set -e: Script läuft auch bei nicht-kritischen Fehlern durch
 
 # ── Farben ───────────────────────────────────────────────────────────────────
 RED='\033[1;31m';  GREEN='\033[1;32m';  YELLOW='\033[1;33m'
@@ -37,6 +38,16 @@ POLKIT_DIR="/usr/share/polkit-1/actions"
 POLKIT_FILE="${POLKIT_DIR}/org.freedesktop.pkexec.${PROG_NAME}.policy"
 ICON_DIR="/usr/share/icons/hicolor/scalable/apps"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ── Log-Datei im Home-Verzeichnis ─────────────────────────────────────────────
+ORIG_USER="${SUDO_USER:-${USER}}"
+ORIG_HOME=$(eval echo "~${ORIG_USER}")
+INSTALL_LOG="${ORIG_HOME}/peessi-install-$(date '+%Y%m%d_%H%M%S').log"
+exec > >(tee -a "${INSTALL_LOG}") 2>&1
+echo "Install-Log: ${INSTALL_LOG}"
+echo "Gestartet  : $(date '+%d.%m.%Y %H:%M:%S')"
+echo "Benutzer   : $(whoami) (SUDO_USER=${SUDO_USER:-–})"
+echo "============================================================"
 
 # Python-Mindestversion
 PY_MIN_MAJOR=3
@@ -165,6 +176,10 @@ DEPENDENCIES=(
     "libnotify-bin:notify-send:Desktop-Benachrichtigungen"
     "xdg-utils:xdg-open:xdg-utils"
 
+    # Tools für eggs/Pakete
+    "git:git:Git (für fresh-eggs)"
+    "curl:curl:curl (Download)"
+
     # Optional
     "zenity:zenity:Zenity GTK-Dialoge:optional"
     "nala:nala:Nala APT-Frontend:optional"
@@ -264,26 +279,6 @@ COMPANION_SCRIPTS=(
     "Festplatte_einbinden.sh"
     "Festplatten_anzeigen.sh"
 )
-
-# mint_full_installer.py suchen und kopieren (aus "linux auf usb/")
-step "Suche mint_full_installer.py"
-MINT_INSTALLER_CANDIDATES=(
-    "${SCRIPT_DIR}/mint_full_installer.py"
-    "${SCRIPT_DIR}/../linux auf usb/mint_full_installer.py"
-    "${SCRIPT_DIR}/linux auf usb/mint_full_installer.py"
-)
-for cand in "${MINT_INSTALLER_CANDIDATES[@]}"; do
-    cand_abs="$(realpath "${cand}" 2>/dev/null || echo "")"
-    if [[ -f "${cand_abs}" ]]; then
-        cp "${cand_abs}" "${INSTALL_DIR}/mint_full_installer.py"
-        chmod 755 "${INSTALL_DIR}/mint_full_installer.py"
-        success "mint_full_installer.py → ${INSTALL_DIR}/"
-        break
-    fi
-done
-if [[ ! -f "${INSTALL_DIR}/mint_full_installer.py" ]]; then
-    warning "mint_full_installer.py nicht gefunden – Mint-Installer-Tab eingeschränkt"
-fi
 echo ""
 info "Kopiere Begleit-Skripte (falls vorhanden)..."
 for s in "${COMPANION_SCRIPTS[@]}"; do
@@ -296,21 +291,75 @@ done
 
 success "Programmdateien installiert: ${INSTALL_DIR}"
 
-# ── mint_full_installer.py suchen und kopieren ────────────────────────────────
-step "Suche mint_full_installer.py"
-for cand in \
-    "${SCRIPT_DIR}/mint_full_installer.py" \
-    "${SCRIPT_DIR}/../linux auf usb/mint_full_installer.py" \
-    "${SCRIPT_DIR}/linux auf usb/mint_full_installer.py"; do
-    if [[ -f "${cand}" ]]; then
-        cp "${cand}" "${INSTALL_DIR}/mint_full_installer.py"
-        chmod 755 "${INSTALL_DIR}/mint_full_installer.py"
-        success "mint_full_installer.py → ${INSTALL_DIR}/"
+# ── eggs-iso-tool.sh Skript kopieren ──────────────────────────────────────────
+step "Kopiere eggs-iso-tool.sh"
+for src in     "${SCRIPT_DIR}/eggs-iso-tool.sh"     "${SCRIPT_DIR}/../eggs-iso-tool.sh"; do
+    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
+    if [[ -f "${src_abs}" ]]; then
+        cp "${src_abs}" "${INSTALL_DIR}/eggs-iso-tool.sh"
+        chmod 755 "${INSTALL_DIR}/eggs-iso-tool.sh"
+        success "eggs-iso-tool.sh → ${INSTALL_DIR}/"
         break
     fi
 done
-[[ ! -f "${INSTALL_DIR}/mint_full_installer.py" ]] && \
-    warning "mint_full_installer.py nicht gefunden – Mint-Installer-Tab eingeschränkt"
+
+# ── Penguins-Eggs .deb installieren (optional) ────────────────────────────────
+step "Prüfe penguins-eggs Installation"
+EGGS_DEB_URL="https://sourceforge.net/projects/penguins-eggs/files/Packages/debs/penguins-eggs_26.3.21-1_amd64.deb/download"
+EGGS_DEB_TMP="/tmp/penguins-eggs_26.3.21-1_amd64.deb"
+EGGS_PATH="$(command -v eggs 2>/dev/null || echo "")"
+
+if [[ -f "${EGGS_PATH}" ]] && [[ $(stat -c%s "${EGGS_PATH}" 2>/dev/null || echo 0) -gt 1000 ]]; then
+    EGGS_VER=$(eggs --version 2>/dev/null | head -1 || echo "unbekannt")
+    success "penguins-eggs bereits installiert: ${EGGS_VER}"
+else
+    info "penguins-eggs nicht gefunden – versuche Installation via fresh-eggs..."
+    info "Methode: git clone fresh-eggs Repository"
+    if command -v git &>/dev/null; then
+        rm -rf /tmp/fresh-eggs
+        if git clone https://github.com/pieroproietti/fresh-eggs /tmp/fresh-eggs 2>/dev/null; then
+            cd /tmp/fresh-eggs
+            # fresh-eggs.sh hat interaktive Prompts → yes "" pipen + DEBIAN_FRONTEND
+            # Das beantwortet alle read-Abfragen automatisch mit Enter
+            export DEBIAN_FRONTEND=noninteractive
+            export APT_OPTIONS="-y -o Dpkg::Options::=--force-confold"
+            if yes "" | bash fresh-eggs.sh 2>&1; then
+                success "penguins-eggs via fresh-eggs installiert"
+            else
+                warning "fresh-eggs Installation fehlgeschlagen – versuche direkten .deb Download"
+                _eggs_deb="/tmp/penguins-eggs.deb"
+                if wget -q --show-progress -O "${_eggs_deb}" "${EGGS_DEB_URL}" 2>&1; then
+                    _sz=$(stat -c%s "${_eggs_deb}" 2>/dev/null || echo 0)
+                    if [[ ${_sz} -gt 1000000 ]]; then
+                        DEBIAN_FRONTEND=noninteractive apt-get install -y "${_eggs_deb}" 2>&1 &&                             success "penguins-eggs via .deb installiert" ||                             warning "Direkte .deb Installation fehlgeschlagen"
+                    else
+                        warning ".deb Download fehlgeschlagen (${_sz} Bytes)"
+                    fi
+                    rm -f "${_eggs_deb}"
+                fi
+            fi
+            cd "${SCRIPT_DIR}"
+        else
+            warning "fresh-eggs Clone fehlgeschlagen – prüfe Internetverbindung"
+            info "Manuell: cd /tmp && git clone https://github.com/pieroproietti/fresh-eggs && cd fresh-eggs && bash fresh-eggs.sh"
+        fi
+    else
+        warning "git nicht verfügbar – eggs muss manuell installiert werden"
+        info "Download: ${EGGS_DEB_URL}"
+    fi
+fi
+
+# ── Calamares-Integration (falls eggs verfügbar) ──────────────────────────────
+EGGS_BIN="$(command -v eggs 2>/dev/null || echo "")"
+if [[ -f "${EGGS_BIN}" ]] && [[ $(stat -c%s "${EGGS_BIN}" 2>/dev/null || echo 0) -gt 1000 ]]; then
+    step "Prüfe Calamares-Integration"
+    if ! command -v calamares &>/dev/null; then
+        info "eggs calamares --install (richtet Krill-Installer ein)..."
+        eggs calamares --install 2>/dev/null &&             success "Calamares/Krill-Installer eingerichtet" ||             warning "Calamares-Integration übersprungen (eggs calamares --install fehlgeschlagen)"
+    else
+        success "Calamares bereits vorhanden"
+    fi
+fi
 
 # ── Python venv anlegen ───────────────────────────────────────────────────────
 # venv anlegen fuer eventuelle zukuenftige Pakete
@@ -396,12 +445,21 @@ step "Erstelle Starter-Scripts"
 # Haupt-Wrapper: nutzt das venv-Python
 cat > "${BIN_WRAPPER}" << WRAPPER
 #!/bin/bash
-# Starter-Wrapper für Peeßi's System Multitool 1.0 Beta
-# Löst pkexec + X11/Wayland Display-Problem
+# Starter-Wrapper für Peeßi's System Multitool v4.1
 
 PROG="${INSTALL_DIR}/main.py"
 VENV_PYTHON="${VENV_DIR}/bin/python3"
 FALLBACK_PYTHON="python3"
+
+# Display-Fix: DISPLAY/XAUTHORITY vor pkexec sichern (pkexec löscht sie)
+# Ohne das erscheint nach Passwort-Eingabe kein Fenster!
+PEESSI_ENV_FILE="\$(mktemp /tmp/peessi_env_XXXXXX)"
+echo "DISPLAY=\${DISPLAY:-:0}" > "\${PEESSI_ENV_FILE}"
+echo "XAUTHORITY=\${XAUTHORITY:-\${HOME}/.Xauthority}" >> "\${PEESSI_ENV_FILE}"
+echo "WAYLAND_DISPLAY=\${WAYLAND_DISPLAY:-}" >> "\${PEESSI_ENV_FILE}"
+chmod 600 "\${PEESSI_ENV_FILE}"
+# Root Zugriff auf X11 gewähren
+xhost +SI:localuser:root 2>/dev/null || true
 
 if [[ -x "\${VENV_PYTHON}" ]]; then
     PY="\${VENV_PYTHON}"
@@ -409,32 +467,12 @@ else
     PY="\${FALLBACK_PYTHON}"
 fi
 
-# Bereits Root → direkt starten
+export PEESSI_ENV_FILE
 if [[ \$EUID -eq 0 ]]; then
     exec "\${PY}" "\${PROG}" "\$@"
-fi
-
-# Display-Variablen sichern (pkexec löscht diese)
-_DISP="\${DISPLAY:-:0}"
-_XAUTH="\${XAUTHORITY:-\${HOME}/.Xauthority}"
-_WAYLAND="\${WAYLAND_DISPLAY:-}"
-_XDG="\${XDG_RUNTIME_DIR:-/run/user/\$(id -u)}"
-
-# Temp-Datei mit Display-Infos für Root-Wrapper schreiben
-_ENVFILE="\$(mktemp /tmp/peessi_env_XXXXXX)"
-echo "DISPLAY=\${_DISP}"           > "\${_ENVFILE}"
-echo "XAUTHORITY=\${_XAUTH}"      >> "\${_ENVFILE}"
-echo "WAYLAND_DISPLAY=\${_WAYLAND}" >> "\${_ENVFILE}"
-echo "XDG_RUNTIME_DIR=\${_XDG}"   >> "\${_ENVFILE}"
-chmod 644 "\${_ENVFILE}"
-
-# X11: Root den Display-Zugriff erlauben
-xhost +SI:localuser:root 2>/dev/null || true
-
-if command -v pkexec &>/dev/null; then
-    exec pkexec env PEESSI_ENV_FILE="\${_ENVFILE}" "${BIN_ROOT_WRAPPER}" "\$@"
+elif command -v pkexec &>/dev/null; then
+    exec pkexec "${BIN_ROOT_WRAPPER}" "\$@"
 else
-    # Fallback: sudo mit Umgebungserhaltung
     exec sudo -E "\${PY}" "\${PROG}" "\$@"
 fi
 WRAPPER
@@ -444,22 +482,21 @@ success "Starter: ${BIN_WRAPPER}"
 # Root-Wrapper für pkexec (pkexec ruft nur direkte Executables auf)
 cat > "${BIN_ROOT_WRAPPER}" << ROOTWRAPPER
 #!/bin/bash
-# Root-Wrapper für pkexec – stellt Display-Variablen wieder her
+# Root-Wrapper für pkexec – stellt DISPLAY/XAUTHORITY wieder her
 VENV_PYTHON="${VENV_DIR}/bin/python3"
 PROG="${INSTALL_DIR}/main.py"
 
-# Display-Variablen aus Temp-Datei laden (von Haupt-Wrapper geschrieben)
-if [[ -f "\${PEESSI_ENV_FILE}" ]]; then
+# DISPLAY/XAUTHORITY aus der Env-Datei laden (vom Haupt-Wrapper gesetzt)
+if [[ -n "\${PEESSI_ENV_FILE:-}" ]] && [[ -f "\${PEESSI_ENV_FILE}" ]]; then
     while IFS='=' read -r key val; do
-        [[ -z "\${key}" || "\${key}" == \#* ]] && continue
-        export "\${key}=\${val}"
+        [[ -n "\${key}" ]] && export "\${key}=\${val}"
     done < "\${PEESSI_ENV_FILE}"
     rm -f "\${PEESSI_ENV_FILE}"
 fi
 
-# Fallback: Standard-Display falls nichts gesetzt
+# Fallback: Standard-Display setzen
 export DISPLAY="\${DISPLAY:-:0}"
-export XAUTHORITY="\${XAUTHORITY:-/root/.Xauthority}"
+export XAUTHORITY="\${XAUTHORITY:-/home/${ORIG_USER}/.Xauthority}"
 
 if [[ -x "\${VENV_PYTHON}" ]]; then
     exec "\${VENV_PYTHON}" "\${PROG}" "\$@"
@@ -582,80 +619,6 @@ UNINSTALL
 chmod 755 "${INSTALL_DIR}/uninstall.sh"
 success "Deinstall: ${INSTALL_DIR}/uninstall.sh"
 
-# ── Live-ISO-Builder: install-deps.sh einbinden ──────────────────────────────
-step "Live-ISO Abhängigkeiten (install-deps.sh)"
-LIVE_ISO_DIR="${SCRIPT_DIR}/../live-iso-ersteller"
-if [[ -f "${LIVE_ISO_DIR}/install-deps.sh" ]]; then
-    cp "${LIVE_ISO_DIR}/install-deps.sh" "${INSTALL_DIR}/install-deps.sh"
-    chmod 755 "${INSTALL_DIR}/install-deps.sh"
-    success "install-deps.sh → ${INSTALL_DIR}/install-deps.sh"
-    # Auch make-live.sh und live-exclude.list kopieren
-    for f in make-live.sh live-exclude.list rsync-test.sh; do
-        [[ -f "${LIVE_ISO_DIR}/${f}" ]] && cp "${LIVE_ISO_DIR}/${f}" "${INSTALL_DIR}/${f}"             && chmod 755 "${INSTALL_DIR}/${f}" && success "  ${f} ✓"
-    done
-else
-    warning "install-deps.sh nicht gefunden (erwartet unter ../live-iso-ersteller/)"
-fi
-
-# ── USB-Installer: prepare_system.sh + mint_full_installer.py ────────────────
-step "USB-Installer Dateien (prepare_system.sh + mint_full_installer.py)"
-USB_DIR="${SCRIPT_DIR}/../linux auf usb"
-if [[ -f "${USB_DIR}/prepare_system.sh" ]]; then
-    cp "${USB_DIR}/prepare_system.sh" "${INSTALL_DIR}/prepare_system.sh"
-    chmod 755 "${INSTALL_DIR}/prepare_system.sh"
-    success "prepare_system.sh → ${INSTALL_DIR}/prepare_system.sh"
-else
-    warning "prepare_system.sh nicht gefunden (erwartet unter ../linux auf usb/)"
-fi
-if [[ -f "${USB_DIR}/mint_full_installer.py" ]]; then
-    cp "${USB_DIR}/mint_full_installer.py" "${INSTALL_DIR}/mint_full_installer.py"
-    chmod 755 "${INSTALL_DIR}/mint_full_installer.py"
-    success "mint_full_installer.py → ${INSTALL_DIR}/mint_full_installer.py"
-else
-    warning "mint_full_installer.py nicht gefunden (erwartet unter ../linux auf usb/)"
-fi
-
-# ── Penguins-Eggs: prüfen und ggf. fresh-eggs herunterladen ──────────────────
-step "Penguins-Eggs (Drittanbieter: Piero Proietti, GPLv3)"
-info "Autor:  Piero Proietti"
-info "Quelle: https://github.com/pieroproietti/penguins-eggs"
-info "Lizenz: GPLv3"
-if command -v eggs &>/dev/null; then
-    EGGS_VER=$(eggs --version 2>/dev/null | head -1 || echo "unbekannt")
-    success "penguins-eggs bereits installiert: ${EGGS_VER}"
-else
-    warning "penguins-eggs nicht gefunden."
-    echo ""
-    read -p "  Soll penguins-eggs jetzt über fresh-eggs installiert werden? [j/N] " INSTALL_EGGS
-    if [[ "${INSTALL_EGGS,,}" =~ ^j ]]; then
-        info "Installiere über fresh-eggs (https://github.com/pieroproietti/fresh-eggs)..."
-        cd /tmp
-        if git clone https://github.com/pieroproietti/fresh-eggs 2>/dev/null; then
-            cd fresh-eggs
-            if bash fresh-eggs.sh; then
-                success "penguins-eggs via fresh-eggs installiert."
-            else
-                # AppImage als Fallback
-                warning "fresh-eggs fehlgeschlagen – versuche AppImage..."
-                EGGS_URL="https://github.com/pieroproietti/penguins-eggs/releases/latest/download/penguins-eggs.AppImage"
-                if wget -q -O /tmp/penguins-eggs.AppImage "${EGGS_URL}" ||                    curl -sL -o /tmp/penguins-eggs.AppImage "${EGGS_URL}"; then
-                    cp /tmp/penguins-eggs.AppImage /usr/local/bin/eggs
-                    chmod +x /usr/local/bin/eggs
-                    success "penguins-eggs AppImage nach /usr/local/bin/eggs installiert."
-                else
-                    warning "Automatische Installation fehlgeschlagen."
-                    warning "Manuell: https://github.com/pieroproietti/penguins-eggs"
-                fi
-            fi
-            cd "${SCRIPT_DIR}"
-        else
-            warning "git clone fehlgeschlagen. Bitte eggs manuell installieren."
-        fi
-    else
-        info "penguins-eggs übersprungen. Kann später über den Laufwerke-Tab installiert werden."
-    fi
-fi
-
 # ── Laufzeit-Selbsttest ──────────────────────────────────────────────────────
 # Testet den ECHTEN Startpfad: venv-Python → alle Module importierbar
 step "Laufzeit-Selbsttest"
@@ -723,7 +686,7 @@ echo -e "${BOLD}${GREEN}╔═════════════════�
 echo -e "${BOLD}${GREEN}║     ✅  Installation erfolgreich abgeschlossen!              ║${RESET}"
 echo -e "${BOLD}${GREEN}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo ""
-echo -e "  ${BOLD}Version:${RESET}         1.0 Beta"
+echo -e "  ${BOLD}Version:${RESET}         4.1"
 echo -e "  ${BOLD}Programm:${RESET}        ${INSTALL_DIR}/main.py"
 echo -e "  ${BOLD}Python venv:${RESET}     ${VENV_DIR}"
 echo -e "  ${BOLD}Starter:${RESET}         ${BIN_WRAPPER}"
