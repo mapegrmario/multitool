@@ -11,6 +11,19 @@
 
 ---
 
+## 👨‍💻 Über dieses Projekt
+
+Peeßi's System Multitool ist ein **privates Hobbyprojekt** – entstanden aus dem persönlichen
+Bedarf, häufig genutzte Linux-Systemwerkzeuge in einer einzigen grafischen Oberfläche
+zusammenzufassen, ohne ständig ins Terminal wechseln zu müssen.
+
+Das Programm wird in der Freizeit entwickelt, nach Bedarf erweitert und verbessert.
+Es gibt keine Garantien auf regelmäßige Updates, vollständige Fehlerfreiheit oder
+professionellen Support. Feedback und Fehlerberichte sind dennoch herzlich willkommen –
+einfach per E-Mail melden.
+
+---
+
 ## ⚠️ Haftungsausschluss
 
 **Dieses Programm wird OHNE JEDE GEWÄHRLEISTUNG bereitgestellt**, weder ausdrücklich noch implizit,
@@ -22,14 +35,14 @@ einschließlich der impliziten Gewährleistung der Marktgängigkeit oder Eignung
 - Alle Daten auf dem Zielgerät werden **unwiderruflich gelöscht**
 - **Immer Backup erstellen** bevor Sie fortfahren!
 - Der Autor übernimmt **keine Haftung** für Datenverlust, Hardwareschäden oder sonstige Schäden
+- Als Hobbyprojekt kann das Programm Fehler enthalten – **kritische Systeme nicht als Testumgebung nutzen**
 
 ---
 
 ## Übersicht
 
-Peeßi's System Multitool ist eine grafische Systemverwaltungs-Anwendung für Linux.
-Sie fasst Werkzeuge für Datenrettung, Laufwerksverwaltung, Systempflege,
-Netzwerkanalyse und Live-ISO-Erstellung in einer einheitlichen Oberfläche zusammen.
+Peeßi's System Multitool fasst Werkzeuge für Datenrettung, Laufwerksverwaltung, Systempflege,
+Netzwerkanalyse und Live-ISO-Erstellung in einer einheitlichen grafischen Oberfläche zusammen.
 
 ---
 
@@ -123,11 +136,11 @@ sudo bash update.sh
 peessi-multitool
 ```
 
-### Diagnose
+### Diagnose bei Problemen
 ```bash
 sudo bash ~/peessi-analyse.sh
 ```
-Erstellt `~/peessi-analyse-DATUM.log` + `~/peessi-analyse-kurz.txt`
+Erstellt `~/peessi-analyse-DATUM.log` und `~/peessi-analyse-kurz.txt`
 
 ### Deinstallieren
 ```bash
@@ -155,3 +168,8 @@ cd fresh-eggs && yes "" | bash fresh-eggs.sh
 | penguins-eggs | Piero Proietti | GPLv3 | https://github.com/pieroproietti/penguins-eggs |
 | fresh-eggs | Piero Proietti | GPLv3 | https://github.com/pieroproietti/fresh-eggs |
 | Ventoy | Ventoy-Team | GPLv3 | https://github.com/ventoy/Ventoy |
+
+---
+
+*Peeßi's System Multitool – ein Hobbyprojekt aus Großenhain 🇩🇪*  
+*Fragen, Fehler, Anregungen: mapegr@mailbox.org*
