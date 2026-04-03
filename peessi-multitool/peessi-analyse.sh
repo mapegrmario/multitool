@@ -103,7 +103,7 @@ declare -A REF_LINES=(
     ["recovery_engine.py"]=202
     ["gui_base.py"]=193
     ["gui_drives.py"]=1725
-    ["gui_system.py"]=2513
+    ["gui_system.py"]=2658
 )
 
 declare -A REF_MD5=(

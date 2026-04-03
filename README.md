@@ -66,6 +66,7 @@ Netzwerkanalyse und Live-ISO-Erstellung in einer einheitlichen grafischen Oberfl
 | ⚡ Optimierer | Kernel-Tuning (BBR TCP, Swappiness), dynamische Swap-Datei, Firefox Low-Memory-Policies |
 | 🥾 Boot-Check | fsck für / aktivieren/deaktivieren |
 | ⚙️ BIOS/EFI | Boot-Reihenfolge, Einträge löschen, Timeout, Backup via efibootmgr |
+| 🔧 GRUB Control Center | Boot-Timeout, Standard-Eintrag, Hintergrund, Themes (inkl. GitHub-Download), Backup, System-Analyse. Basiert auf GRUB Control Center v2.1.1 (MIT) |
 | 🔄 Update & Shutdown | Automatische Updates + anschließendes Herunterfahren |
 | 🚀 Einmal-Starter | Script einmalig beim nächsten Login ausführen (via .bashrc) |
 | 🐧 Eggs-ISO | Live-ISO des laufenden Systems erstellen (siehe unten) |
@@ -168,6 +169,7 @@ cd fresh-eggs && yes "" | bash fresh-eggs.sh
 | penguins-eggs | Piero Proietti | GPLv3 | https://github.com/pieroproietti/penguins-eggs |
 | fresh-eggs | Piero Proietti | GPLv3 | https://github.com/pieroproietti/fresh-eggs |
 | Ventoy | Ventoy-Team | GPLv3 | https://github.com/ventoy/Ventoy |
+| GRUB Control Center | Community | MIT | (enthalten in grub-control-center/) |
 
 ---
 

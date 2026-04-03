@@ -31,6 +31,13 @@ from wipe_engine import WipeEngine
 from security import SecurityManager
 from gui_base import GuiBase
 
+# GRUB Control Center Tab (separate Datei für Wartungsfreundlichkeit)
+try:
+    from gui_grub import GrubTab
+    _GRUB_AVAILABLE = True
+except ImportError:
+    _GRUB_AVAILABLE = False
+
 
 class DashboardTab(GuiBase):
     def __init__(self, nb_main, app):
@@ -418,6 +425,7 @@ class SystemTab(GuiBase):
         self._build_update_shutdown(nb)
         self._build_einmal_starter(nb)
         self._build_eggs_iso(nb)
+        self._build_grub_tab(nb)
 
     # ── Systempflege ──────────────────────────────────────────────────────────
     def _build_cleanup(self, nb):
@@ -1542,6 +1550,25 @@ sync; sleep 1; systemctl poweroff
         self.run_shell_async(cmd, self._eggs_iso_log, self._eggs_iso_run_btn)
 
 
+    # ══════════════════════════════════════════════════════════════════════
+    #  TAB: GRUB CONTROL CENTER
+    # ══════════════════════════════════════════════════════════════════════
+    def _build_grub_tab(self, nb):
+        """GRUB Control Center Tab – Implementierung in gui_grub.py."""
+        if _GRUB_AVAILABLE:
+            self._grub_tab = GrubTab(nb, self.app, self.theme)
+        else:
+            # Fallback wenn gui_grub.py fehlt
+            T   = self.theme
+            tab = ttk.Frame(nb)
+            nb.add(tab, text="🔧 GRUB")
+            tk.Label(tab,
+                text="⚠️  gui_grub.py nicht gefunden.\n\n"
+                     "Bitte install-peessi-multitool.sh erneut ausführen.",
+                bg=T["bg"], fg=T["danger"],
+                font=("Arial", 11)).pack(expand=True)
+
+
 class NetworkTab(GuiBase):
     def __init__(self, nb_main, app):
         super().__init__(app.root, app.settings, app.theme, app._log_widgets)
@@ -2613,7 +2640,7 @@ class AboutTab(GuiBase):
             "🖥️  Dashboard          –  CPU, RAM, Swap, Disk, Uptime, bunte Balken",
             "⚙️  System             –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
             "🐧  Eggs-ISO           –  Live-ISO erstellen (Programme/Design/Vollklon), Calamares",
-            "🐧  Eggs-ISO           –  Live-ISO erstellen (Programme/Design/Vollklon), Calamares",
+            "🔧  GRUB               –  Boot-Einstellungen, Themes, Backup, System-Analyse (GRUB CC v2.1.1)",
             "🌐  Netzwerk           –  Interfaces, Ping, Verbindungen (sortierbar+kopierbar), WLAN-Keys",
             "📋  Logs & Diagnose   –  Viewer mit Farbmarkierung + Suche, HTML-Systembericht",
             "🎨  Dark/Light-Mode   –  Catppuccin Mocha / Standard-Hell, anpassbare Farben",

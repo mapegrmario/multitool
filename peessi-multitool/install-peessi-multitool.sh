@@ -181,7 +181,8 @@ DEPENDENCIES=(
     "curl:curl:curl (Download)"
 
     # Optional
-    "zenity:zenity:Zenity GTK-Dialoge:optional"
+    "zenity:zenity:Zenity (GRUB Control Center GUI)"
+    "os-prober:os-prober:OS-Erkennung für GRUB:optional"
     "nala:nala:Nala APT-Frontend:optional"
     "fwupd:fwupdmgr:Firmware-Updates:optional"
     "wget:wget:wget:optional"
@@ -299,6 +300,28 @@ for src in     "${SCRIPT_DIR}/eggs-iso-tool.sh"     "${SCRIPT_DIR}/../eggs-iso-t
         cp "${src_abs}" "${INSTALL_DIR}/eggs-iso-tool.sh"
         chmod 755 "${INSTALL_DIR}/eggs-iso-tool.sh"
         success "eggs-iso-tool.sh → ${INSTALL_DIR}/"
+        break
+    fi
+done
+
+# ── GRUB Control Center kopieren ─────────────────────────────────────────────
+step "Kopiere GRUB Control Center Scripts"
+for src in "${SCRIPT_DIR}/grub-control-center" "${SCRIPT_DIR}/../grub-control-center"; do
+    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
+    if [[ -d "${src_abs}" ]]; then
+        cp -r "${src_abs}" "${INSTALL_DIR}/grub-control-center"
+        chmod -R 755 "${INSTALL_DIR}/grub-control-center/scripts/"
+        success "grub-control-center → ${INSTALL_DIR}/grub-control-center/"
+        break
+    fi
+done
+
+# ── GRUB gui_grub.py kopieren ─────────────────────────────────────────────────
+for src in "${SCRIPT_DIR}/gui_grub.py" "${SCRIPT_DIR}/../gui_grub.py"; do
+    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
+    if [[ -f "${src_abs}" ]]; then
+        cp "${src_abs}" "${INSTALL_DIR}/gui_grub.py"
+        success "gui_grub.py → ${INSTALL_DIR}/"
         break
     fi
 done
