@@ -101,9 +101,9 @@ declare -A REF_LINES=(
     ["smart_engine.py"]=160
     ["wipe_engine.py"]=171
     ["recovery_engine.py"]=202
-    ["gui_base.py"]=193
-    ["gui_drives.py"]=1725
-    ["gui_system.py"]=2658
+    ["gui_base.py"]=273
+    ["gui_drives.py"]=1574
+    ["gui_system.py"]=2660
 )
 
 declare -A REF_MD5=(
@@ -115,9 +115,9 @@ declare -A REF_MD5=(
     ["smart_engine.py"]="a497e9f96f2d"
     ["wipe_engine.py"]="b91b8acb324b"
     ["recovery_engine.py"]="f07773856c2a"
-    ["gui_base.py"]="b1d676d182b3"
+    ["gui_base.py"]="51e992dc2a12"
     ["gui_drives.py"]="b3a2a6c12b99"
-    ["gui_system.py"]="da754053c3ae"
+    ["gui_system.py"]="13c6058074bd"
 )
 
 PY="${VENV_PYTHON:-python3}"

@@ -57,6 +57,7 @@ Netzwerkanalyse und Live-ISO-Erstellung in einer einheitlichen grafischen Oberfl
 | 💿 ISO-Brenner | Alle Laufwerke wählbar (Systemlaufwerke mit Warnung), SHA256-Prüfung, automatische Verifikation |
 | 🔁 USB-Clone | 1:1-Klon via dd mit optionaler cmp-Verifikation (Sub-Tab im ISO-Brenner) |
 | 🔗 Partition einbinden | Dauerhaft via fstab, automatisches Backup vor jeder Änderung |
+| 🩺 Laufwerk-Diagnose | S.M.A.R.T. Check + Badblocks Oberflächenscan (Nur-Lesen). Logs unter ~/DriveTests/. Abbruch jederzeit möglich |
 
 ### 🖥️ System
 | Funktion | Beschreibung |

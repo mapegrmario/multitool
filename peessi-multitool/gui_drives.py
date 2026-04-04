@@ -23,6 +23,13 @@ from wipe_engine import WipeEngine
 from smart_engine import query_smart, query_smart_attributes, is_failed
 from gui_base import GuiBase
 
+# Laufwerk-Diagnose Tab (separate Datei für Wartung)
+try:
+    from gui_drive_health import DriveHealthTab
+    _HEALTH_AVAILABLE = True
+except ImportError:
+    _HEALTH_AVAILABLE = False
+
 # matplotlib entfernt – SMART-Verlauf als Texttabelle
 HAS_MATPLOTLIB = False
 
@@ -51,17 +58,16 @@ class DrivesTabs(GuiBase):
         nb.pack(fill='both', expand=True, padx=4, pady=4)
         self._build_recovery_tab(nb)
         self._build_wipe_tab(nb)
-        self._build_smart_tab(nb)
         self._build_iso_tab(nb)
         self._build_usb_clone_tab(nb)
         self._build_partition_tab(nb)
+        self._build_drive_health_tab(nb)
 
     # ── Laufwerke aktualisieren ───────────────────────────────────────────────
     def refresh_drives(self, drives: list):
         self.all_drives = drives
         self._update_recovery_combo()
         self._update_wipe_list()
-        self._update_smart_combo()
         self._update_iso_targets()
         self._update_clone_combos()
 
@@ -96,14 +102,6 @@ class DrivesTabs(GuiBase):
                         "✓" if d.is_ssd or d.is_nvme else ""),
                 tags=(tag,))
 
-    def _update_smart_combo(self):
-        if not hasattr(self, 'smart_dev_cb'):
-            return
-        vals = [d.device for d in self.all_drives]
-        self.smart_dev_cb['values'] = vals
-        if vals and not self.smart_dev_var.get():
-            self.smart_dev_cb.current(0)
-
     def _update_iso_targets(self):
         if not hasattr(self, 'iso_target_cb'):
             return
@@ -126,9 +124,8 @@ class DrivesTabs(GuiBase):
     # ══════════════════════════════════════════════════════════════════════
     def _build_recovery_tab(self, nb):
         T   = self.theme
-        tab = ttk.Frame(nb)
-        nb.add(tab, text="🔍 Datenrettung")
-        pane = tk.Frame(tab, bg=T["bg"])
+        _, pane = self.make_scrollable_tab(nb, "🔍 Datenrettung")
+        pane = tk.Frame(pane, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=12, pady=10)
 
         sel = ttk.LabelFrame(pane, text=" Defektes Gerät ", padding=10)
@@ -740,168 +737,6 @@ class DrivesTabs(GuiBase):
     # ══════════════════════════════════════════════════════════════════════
     #  TAB: SMART-MONITOR
     # ══════════════════════════════════════════════════════════════════════
-    def _build_smart_tab(self, nb):
-        T   = self.theme
-        tab = ttk.Frame(nb)
-        nb.add(tab, text="📊 SMART-Monitor")
-        pane = tk.Frame(tab, bg=T["bg"])
-        pane.pack(fill='both', expand=True, padx=12, pady=10)
-
-        sel_f = ttk.LabelFrame(pane, text=" Gerät auswählen ", padding=8)
-        sel_f.pack(fill='x', pady=(0, 8))
-        self.smart_dev_var = tk.StringVar()
-        self.smart_dev_cb  = ttk.Combobox(sel_f, textvariable=self.smart_dev_var,
-                                          state='readonly', width=30)
-        self.smart_dev_cb.pack(side='left', padx=(0, 8))
-        ttk.Button(sel_f, text="🔍 SMART auslesen",
-                   command=self._read_smart).pack(side='left', padx=4)
-        ttk.Button(sel_f, text="📈 Verlauf anzeigen",
-                   command=self._show_smart_history).pack(side='left', padx=4)
-        ttk.Button(sel_f, text="💾 In DB speichern",
-                   command=self._save_smart_to_db).pack(side='left', padx=4)
-
-        attr_f = ttk.LabelFrame(pane, text=" SMART-Attribute ", padding=8)
-        attr_f.pack(fill='both', expand=True, pady=(0, 8))
-        scols = ('ID', 'Attribut', 'Wert', 'Worst', 'Thresh', 'Raw', 'Status')
-        self.smart_tree = ttk.Treeview(attr_f, columns=scols, show='headings', height=10)
-        sw = {'ID':40,'Attribut':200,'Wert':55,'Worst':55,'Thresh':55,'Raw':110,'Status':100}
-        for c in scols:
-            self.smart_tree.heading(c, text=c)
-            self.smart_tree.column(c, width=sw.get(c, 100))
-        self.smart_tree.tag_configure('warn', background=T["tag_system"])
-        self.smart_tree.tag_configure('crit', background=T["tag_internal"])
-        ssb = ttk.Scrollbar(attr_f, orient='vertical', command=self.smart_tree.yview)
-        self.smart_tree.configure(yscrollcommand=ssb.set)
-        self.smart_tree.pack(side='left', fill='both', expand=True)
-        ssb.pack(side='right', fill='y')
-
-        smart_btn_f = tk.Frame(pane, bg=T["bg"])
-        smart_btn_f.pack(fill='x', pady=(0, 8))
-        ttk.Button(smart_btn_f, text="📋 Tabelle kopieren",
-                   command=self._copy_smart_table).pack(side='left', padx=4)
-        ttk.Button(smart_btn_f, text="💾 Als Textdatei speichern",
-                   command=self._save_smart_as_txt).pack(side='left', padx=4)
-
-        hist_f = ttk.LabelFrame(pane, text=" SMART-Verlauf (letzte 90 Tage) ", padding=8)
-        hist_f.pack(fill='both', expand=True)
-        self.smart_hist_log = self.make_log_widget(hist_f, height=8)
-        self.smart_hist_log.pack(fill='both', expand=True)
-
-    def _read_smart(self):
-        dev = self.smart_dev_var.get()
-        if not dev:
-            return
-        for row in self.smart_tree.get_children():
-            self.smart_tree.delete(row)
-        attrs = query_smart_attributes(dev)
-        if not attrs:
-            messagebox.showinfo("SMART", f"Keine Daten für {dev}.")
-            return
-        for a in attrs:
-            self.smart_tree.insert('', 'end',
-                values=(a['id'], a['name'], a['value'], a['worst'],
-                        a['thresh'], a['raw'], a['status']),
-                tags=(a['tag'],) if a['tag'] else ())
-
-    def _save_smart_to_db(self):
-        dev = self.smart_dev_var.get()
-        if not dev:
-            return
-        attrs = {}
-        for row in self.smart_tree.get_children():
-            vals = self.smart_tree.item(row)['values']
-            if vals:
-                try:
-                    attrs[str(vals[1])] = {
-                        "normalized": int(vals[2]),
-                        "raw": int(str(vals[5]).split()[0]) if str(vals[5]).split() else 0
-                    }
-                except Exception:
-                    pass
-        if attrs:
-            self.smart_db.record(dev, attrs)
-            messagebox.showinfo("SMART", f"✅ {len(attrs)} Attribute gespeichert.")
-
-    def _smart_table_as_text(self) -> str:
-        import datetime
-        dev    = self.smart_dev_var.get() or "Unbekannt"
-        ts     = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cols   = ('ID', 'Attribut', 'Wert', 'Worst', 'Thresh', 'Raw', 'Status')
-        widths = [len(c) for c in cols]
-        rows   = []
-        for iid in self.smart_tree.get_children():
-            vals = [str(v) for v in self.smart_tree.item(iid)['values']]
-            rows.append(vals)
-            for i, v in enumerate(vals):
-                widths[i] = max(widths[i], len(v))
-        sep    = "-" * (sum(widths) + len(widths) * 3 + 1)
-        header = "| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(cols)) + " |"
-        out    = ["SMART-Bericht: " + dev, "Erstellt:      " + ts, sep, header, sep]
-        for vals in rows:
-            out.append("| " + " | ".join(v.ljust(widths[i]) for i, v in enumerate(vals)) + " |")
-        out.append(sep)
-        return "\n".join(out)
-
-    def _copy_smart_table(self):
-        if not self.smart_tree.get_children():
-            messagebox.showinfo("SMART", "Tabelle leer – bitte zuerst SMART auslesen.")
-            return
-        text = self._smart_table_as_text()
-        self.root.clipboard_clear()
-        self.root.clipboard_append(text)
-        self.root.update()
-        messagebox.showinfo("Kopiert", "SMART-Tabelle kopiert.")
-
-    def _save_smart_as_txt(self):
-        if not self.smart_tree.get_children():
-            messagebox.showinfo("SMART", "Tabelle leer – bitte zuerst SMART auslesen.")
-            return
-        import datetime
-        dev  = self.smart_dev_var.get().replace("/dev/", "").replace("/", "_")
-        ts   = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
-        path = filedialog.asksaveasfilename(
-            title="SMART-Tabelle speichern",
-            initialfile=f"smart_{dev}_{ts}.txt",
-            initialdir=str(USER_HOME),
-            defaultextension=".txt",
-            filetypes=[("Textdateien", "*.txt"), ("Alle Dateien", "*")])
-        if not path:
-            return
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(self._smart_table_as_text())
-            messagebox.showinfo("Gespeichert", "Gespeichert: " + path)
-        except Exception as e:
-            messagebox.showerror("Fehler", str(e))
-
-    def _show_smart_history(self):
-        dev = self.smart_dev_var.get()
-        if not dev:
-            return
-        attrs = self.smart_db.get_attributes(dev)
-        if not attrs:
-            messagebox.showinfo("Kein Verlauf",
-                f"Keine Verlaufsdaten für {dev}.\nBitte zuerst 'In DB speichern'.")
-            return
-        import datetime
-        lines_out = [f"SMART-Verlauf: {dev}",
-                     f"Erstellt: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                     "=" * 60]
-        for attr in attrs:
-            data = self.smart_db.get_history(dev, attr, days=90)
-            if not data:
-                continue
-            lines_out.append(f"\nAttribut: {attr}  ({len(data)} Messwerte)")
-            lines_out.append(f"  {'Zeitstempel':<20}  {'Raw-Wert':>12}")
-            lines_out.append(f"  {'-'*20}  {'-'*12}")
-            for ts, val in data:
-                lines_out.append(f"  {str(ts)[:19]:<20}  {str(val or 0):>12}")
-        lines_out.append("\n" + "=" * 60)
-        self.log_to(self.smart_hist_log, "\n".join(lines_out), clear=True)
-
-    # ══════════════════════════════════════════════════════════════════════
-    #  TAB: ISO-BRENNER
-    # ══════════════════════════════════════════════════════════════════════
     def _build_iso_tab(self, nb):
         T   = self.theme
         outer = ttk.Frame(nb)
@@ -1209,9 +1044,8 @@ class DrivesTabs(GuiBase):
     # ══════════════════════════════════════════════════════════════════════
     def _build_iso_clone_subtab(self, sub_nb, T):
         """USB-Clone als Sub-Tab direkt im ISO-Brenner."""
-        tab = ttk.Frame(sub_nb)
-        sub_nb.add(tab, text="🔁 USB-Clone")
-        pane = tk.Frame(tab, bg=T["bg"])
+        _, pane_outer = self.make_scrollable_tab(sub_nb, "🔁 USB-Clone")
+        pane = tk.Frame(pane_outer, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=12, pady=10)
 
         desc = ttk.LabelFrame(pane, text=" Beschreibung ", padding=8)
@@ -1325,9 +1159,8 @@ class DrivesTabs(GuiBase):
 
     def _build_usb_clone_tab(self, nb):
         T   = self.theme
-        tab = ttk.Frame(nb)
-        nb.add(tab, text="📋 USB-Klon")
-        pane = tk.Frame(tab, bg=T["bg"])
+        _, pane = self.make_scrollable_tab(nb, "📋 USB-Klon")
+        pane = tk.Frame(pane, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=12, pady=10)
 
         desc = ttk.LabelFrame(pane, text=" Beschreibung ", padding=10)
@@ -1565,9 +1398,8 @@ class DrivesTabs(GuiBase):
     # ══════════════════════════════════════════════════════════════════════
     def _build_partition_tab(self, nb):
         T   = self.theme
-        tab = ttk.Frame(nb)
-        nb.add(tab, text="🔗 Partition einbinden")
-        pane = tk.Frame(tab, bg=T["bg"])
+        _, pane = self.make_scrollable_tab(nb, "🔗 Partition einbinden")
+        pane = tk.Frame(pane, bg=T["bg"])
         pane.pack(fill='both', expand=True, padx=12, pady=10)
 
         desc = ttk.LabelFrame(pane, text=" Beschreibung ", padding=10)
@@ -1723,3 +1555,20 @@ class DrivesTabs(GuiBase):
             except Exception as e:
                 self.root.after(0, lambda: self.log_to(self.part_log, f"❌ {e}\n"))
         threading.Thread(target=worker, daemon=True).start()
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  TAB: LAUFWERK-DIAGNOSE (gui_drive_health.py)
+    # ══════════════════════════════════════════════════════════════════════
+    def _build_drive_health_tab(self, nb):
+        """Laufwerk-Diagnose Tab – Implementierung in gui_drive_health.py."""
+        if _HEALTH_AVAILABLE:
+            self._health_tab = DriveHealthTab(nb, self.app, self.theme)
+        else:
+            T = self.theme
+            tab = ttk.Frame(nb)
+            nb.add(tab, text="🩺 Laufwerk-Diagnose")
+            tk.Label(tab,
+                text="⚠️  gui_drive_health.py nicht gefunden.\n\n"
+                     "Bitte install-peessi-multitool.sh erneut ausführen.",
+                bg=T["bg"], fg=T["danger"],
+                font=("Arial", 11)).pack(expand=True)

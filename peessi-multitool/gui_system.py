@@ -2641,6 +2641,8 @@ class AboutTab(GuiBase):
             "⚙️  System             –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
             "🐧  Eggs-ISO           –  Live-ISO erstellen (Programme/Design/Vollklon), Calamares",
             "🔧  GRUB               –  Boot-Einstellungen, Themes, Backup, System-Analyse (GRUB CC v2.1.1)",
+            "🩺  Laufwerk-Diagnose  –  S.M.A.R.T. + Badblocks Oberflächenscan, Log ~/DriveTests/",
+            "🩺  Laufwerk-Diagnose  –  S.M.A.R.T. + Badblocks Oberflächenscan, Log ~/DriveTests/",
             "🌐  Netzwerk           –  Interfaces, Ping, Verbindungen (sortierbar+kopierbar), WLAN-Keys",
             "📋  Logs & Diagnose   –  Viewer mit Farbmarkierung + Suche, HTML-Systembericht",
             "🎨  Dark/Light-Mode   –  Catppuccin Mocha / Standard-Hell, anpassbare Farben",

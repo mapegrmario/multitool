@@ -118,6 +118,86 @@ class GuiBase:
         except Exception as e:
             messagebox.showerror("Fehler", str(e))
 
+    def make_scrollable_tab(self, nb: "ttk.Notebook", title: str):
+        """
+        Erstellt einen scrollbaren Tab mit Canvas.
+        Gibt (tab_frame, inner_frame) zurück – Widgets in inner_frame packen.
+        Mausrad-Scrolling funktioniert auch über Kind-Widgets.
+        """
+        T = self.theme
+        outer = ttk.Frame(nb)
+        nb.add(outer, text=title)
+        canvas = tk.Canvas(outer, bg=T["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=T["bg"])
+        win   = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfig(win, width=e.width))
+
+        def _scroll(ev):
+            if ev.delta:
+                canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
+            elif ev.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif ev.num == 5:
+                canvas.yview_scroll(1, "units")
+
+        def _bind_rec(w):
+            w.bind("<MouseWheel>", _scroll, add="+")
+            w.bind("<Button-4>",   _scroll, add="+")
+            w.bind("<Button-5>",   _scroll, add="+")
+            for child in w.winfo_children():
+                _bind_rec(child)
+
+        _bind_rec(canvas)
+        inner.bind("<Configure>", lambda e: _bind_rec(canvas), add="+")
+        return outer, inner
+
+    def make_scrollable_tab(self, nb, title: str):
+        """
+        Erstellt einen scrollbaren Tab mit Canvas.
+        Gibt (tab_frame, inner_frame) zurück – Widgets in inner_frame packen.
+        Mausrad-Scrolling funktioniert auch über alle Kind-Widgets.
+        """
+        T = self.theme
+        outer = ttk.Frame(nb)
+        nb.add(outer, text=title)
+        canvas = tk.Canvas(outer, bg=T["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=T["bg"])
+        win   = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>",
+                   lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>",
+                    lambda e: canvas.itemconfig(win, width=e.width))
+
+        def _scroll(ev):
+            if ev.delta:
+                canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
+            elif ev.num == 4:
+                canvas.yview_scroll(-1, "units")
+            elif ev.num == 5:
+                canvas.yview_scroll(1, "units")
+
+        def _bind_rec(w):
+            w.bind("<MouseWheel>", _scroll, add="+")
+            w.bind("<Button-4>",   _scroll, add="+")
+            w.bind("<Button-5>",   _scroll, add="+")
+            for child in w.winfo_children():
+                _bind_rec(child)
+
+        _bind_rec(canvas)
+        inner.bind("<Configure>", lambda e: _bind_rec(canvas), add="+")
+        return outer, inner
+
     def make_log_widget(self, parent, height=10) -> scrolledtext.ScrolledText:
         T = self.theme
         w = scrolledtext.ScrolledText(parent, height=height, state='disabled',

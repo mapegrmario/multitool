@@ -304,6 +304,26 @@ for src in     "${SCRIPT_DIR}/eggs-iso-tool.sh"     "${SCRIPT_DIR}/../eggs-iso-t
     fi
 done
 
+# ── Laufwerk-Diagnose Scripts kopieren ───────────────────────────────────────
+step "Kopiere Laufwerk-Diagnose Scripts"
+for src in "${SCRIPT_DIR}/gui_drive_health.py" "${SCRIPT_DIR}/../gui_drive_health.py"; do
+    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
+    if [[ -f "${src_abs}" ]]; then
+        cp "${src_abs}" "${INSTALL_DIR}/gui_drive_health.py"
+        success "gui_drive_health.py → ${INSTALL_DIR}/"
+        break
+    fi
+done
+for src in "${SCRIPT_DIR}/drive-health-tool.sh" "${SCRIPT_DIR}/../drive-health-tool.sh"; do
+    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
+    if [[ -f "${src_abs}" ]]; then
+        cp "${src_abs}" "${INSTALL_DIR}/drive-health-tool.sh"
+        chmod 755 "${INSTALL_DIR}/drive-health-tool.sh"
+        success "drive-health-tool.sh → ${INSTALL_DIR}/"
+        break
+    fi
+done
+
 # ── GRUB Control Center kopieren ─────────────────────────────────────────────
 step "Kopiere GRUB Control Center Scripts"
 for src in "${SCRIPT_DIR}/grub-control-center" "${SCRIPT_DIR}/../grub-control-center"; do
