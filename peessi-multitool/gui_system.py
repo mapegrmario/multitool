@@ -449,60 +449,22 @@ class SystemTab(GuiBase):
 
     # ── Optimierer ───────────────────────────────────────────────────────────
     def _build_optimizer(self, nb):
+        import os as _os
+        T    = self.theme
+        INSTALL_DIR = _os.path.dirname(_os.path.abspath(__file__))
+        script = _os.path.join(INSTALL_DIR, "optimizer.sh")
+        # Fallback: Script direkt nach /tmp schreiben wenn nicht vorhanden
+        if not _os.path.isfile(script):
+            script = "/tmp/peessi_optimizer.sh"
+        cmd = f"bash '{script}'"
         self.make_shell_tab(nb,
             "⚡ Optimierer",
             "Kernel-Tuning (BBR falls verfügbar, Swappiness), dynamische Swap-Datei,\n"
             "Firefox Low-Memory-Policies (nur wenn Firefox installiert).\n"
             "Funktioniert auf allen Debian/Ubuntu/Mint-Systemen.  ⚠️ Benötigt Root. Neustart empfohlen.",
             "Optimieren",
-            ("bash -c '"
-             "echo \"=== 1. Kernel-Tuning ===\"; "
-             "CONF=/etc/sysctl.d/99-peessi-optimizer.conf; "
-             "{"
-             "echo \"vm.swappiness = 10\"; "
-             "echo \"vm.vfs_cache_pressure = 50\"; "
-             "echo \"vm.dirty_ratio = 10\"; "
-             "echo \"vm.dirty_background_ratio = 5\"; "
-             "echo \"net.core.default_qdisc = fq\"; "
-             "if modprobe tcp_bbr 2>/dev/null && grep -q bbr /proc/sys/net/ipv4/tcp_available_congestion_control 2>/dev/null; then "
-             "  echo \"net.ipv4.tcp_congestion_control = bbr\"; "
-             "  echo \"✓ BBR TCP-Modul verfuegbar und aktiviert.\"; "
-             "else "
-             "  echo \"# BBR nicht verfuegbar (Kernel-Modul fehlt), cubic beibehalten\"; "
-             "  echo \"⚠ BBR nicht verfuegbar – Standard-TCP bleibt aktiv.\"; "
-             "fi; "
-             "} | tee $CONF > /dev/null; "
-             "grep -v '^echo\\|^if\\|^else\\|^fi' $CONF > /tmp/sysctl_clean.conf && mv /tmp/sysctl_clean.conf $CONF; "
-             "sysctl --system > /dev/null && echo \"✓ Kernel-Parameter gesetzt.\"; "
-             "echo; echo \"=== 2. Swap-Datei (dynamisch) ===\"; "
-             "RAM_MB=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo); "
-             "if [ $RAM_MB -le 2048 ]; then SWAP_MB=4096; "
-             "elif [ $RAM_MB -le 4096 ]; then SWAP_MB=4096; "
-             "elif [ $RAM_MB -le 8192 ]; then SWAP_MB=8192; "
-             "else SWAP_MB=4096; fi; "
-             "FREE_KB=$(df / | awk 'NR==2{print $4}'); "
-             "FREE_MB=$((FREE_KB/1024)); "
-             "if [ $FREE_MB -lt $((SWAP_MB+1024)) ]; then "
-             "  echo \"⚠ Nicht genug freier Speicher fuer ${SWAP_MB}MB Swap (frei: ${FREE_MB}MB). Swap uebersprungen.\"; "
-             "else "
-             "  swapoff -a 2>/dev/null; [ -f /swapfile ] && rm /swapfile; "
-             "  dd if=/dev/zero of=/swapfile bs=1M count=$SWAP_MB status=progress; "
-             "  chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile; "
-             "  grep -q /swapfile /etc/fstab || echo \"/swapfile none swap sw 0 0\" >> /etc/fstab; "
-             "  echo \"✓ ${SWAP_MB}MB Swap aktiv (RAM: ${RAM_MB}MB).\"; "
-             "fi; "
-             "echo; echo \"=== 3. Firefox (optional) ===\"; "
-             "if command -v firefox >/dev/null 2>&1 || [ -d /etc/firefox ]; then "
-             "  mkdir -p /etc/firefox/policies; "
-             "  printf '{\"policies\":{\"Preferences\":{"
-             "\"browser.tabs.unloadOnLowMemory\":true,"
-             "\"browser.low_commit_space_threshold_mb\":2048}}}' "
-             "  > /etc/firefox/policies/policies.json && echo \"✓ Firefox Low-Memory-Policies gesetzt.\"; "
-             "else echo \"ℹ Firefox nicht installiert – uebersprungen.\"; fi; "
-             "echo; echo \"✅ Optimierung abgeschlossen.\"'"
-             )
+            cmd
         )
-
     # ── Prozesse ─────────────────────────────────────────────────────────────
     def _build_boot(self, nb):
         T   = self.theme

@@ -1,0 +1,9 @@
+der tab "sichere löschen " und der tab "eggs-iso" scrollen  nicht über das mouse rad.
+
+
+
+
+im tab "logs und diagnose" / "log viewer" füge eine möglichkeit ein alle logs in einen frei wählbaren ordner zu speichern.
+
+überprüfe die datei "peessi-analyse.sh" auf verbesserungen bzw. detail reicherer  untersuchung 
+

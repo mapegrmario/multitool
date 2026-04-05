@@ -304,6 +304,18 @@ for src in     "${SCRIPT_DIR}/eggs-iso-tool.sh"     "${SCRIPT_DIR}/../eggs-iso-t
     fi
 done
 
+# ── optimizer.sh kopieren ────────────────────────────────────────────────────
+step "Kopiere optimizer.sh"
+for src in "${SCRIPT_DIR}/optimizer.sh" "${SCRIPT_DIR}/../optimizer.sh"; do
+    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
+    if [[ -f "${src_abs}" ]]; then
+        cp "${src_abs}" "${INSTALL_DIR}/optimizer.sh"
+        chmod 755 "${INSTALL_DIR}/optimizer.sh"
+        success "optimizer.sh → ${INSTALL_DIR}/"
+        break
+    fi
+done
+
 # ── Laufwerk-Diagnose Scripts kopieren ───────────────────────────────────────
 step "Kopiere Laufwerk-Diagnose Scripts"
 for src in "${SCRIPT_DIR}/gui_drive_health.py" "${SCRIPT_DIR}/../gui_drive_health.py"; do
