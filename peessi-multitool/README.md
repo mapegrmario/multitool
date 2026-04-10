@@ -57,7 +57,6 @@ Netzwerkanalyse und Live-ISO-Erstellung in einer einheitlichen grafischen Oberfl
 | 💿 ISO-Brenner | Alle Laufwerke wählbar (Systemlaufwerke mit Warnung), SHA256-Prüfung, automatische Verifikation |
 | 🔁 USB-Clone | 1:1-Klon via dd mit optionaler cmp-Verifikation (Sub-Tab im ISO-Brenner) |
 | 🔗 Partition einbinden | Dauerhaft via fstab, automatisches Backup vor jeder Änderung |
-| 🩺 Laufwerk-Diagnose | S.M.A.R.T. Check + Badblocks Oberflächenscan (Nur-Lesen). Logs unter ~/DriveTests/. Abbruch jederzeit möglich |
 
 ### 🖥️ System
 | Funktion | Beschreibung |
@@ -90,6 +89,16 @@ Erstellt bootfähige Live-ISOs des laufenden Systems mit **penguins-eggs**.
 
 > Vor der ersten Erstellung **„System vorbereiten (eggs dad -d)"** ausführen.  
 > Voraussetzung: penguins-eggs installiert (wird von `install-peessi-multitool.sh` automatisch eingerichtet).
+
+### 🔧 Erweiterte Werkzeuge
+| Funktion | Beschreibung |
+|---|---|
+| 💾 Disk-Images | Laufwerk als komprimiertes/unkomprimiertes Image sichern (dd + gzip) und wiederherstellen |
+| 🔄 Datenmigration | Dateien via rsync übertragen – Live-Ausgabe, Stopp-Button, Spiegel, Trockenlauf |
+| 💿 LVM | PV → VG → LV erstellen, Status anzeigen, Logical Volume vergrößern + FS-Resize |
+| 🛡️ RAID | mdadm: RAID 0/1/5/6/10 erstellen, Status via /proc/mdstat, RAID stoppen |
+| 🩹 Boot-Reparatur | GRUB auf Laufwerk installieren, TestDisk im Terminal, Windows-MBR (ms-sys) |
+| 🔐 nwipe | Sicheres Löschen mit nwipe (Gutmann, DoD, PRNG…) – interaktiv im Terminal |
 
 ### 🌐 Netzwerk
 | Funktion | Beschreibung |
@@ -171,6 +180,7 @@ cd fresh-eggs && yes "" | bash fresh-eggs.sh
 | fresh-eggs | Piero Proietti | GPLv3 | https://github.com/pieroproietti/fresh-eggs |
 | Ventoy | Ventoy-Team | GPLv3 | https://github.com/ventoy/Ventoy |
 | GRUB Control Center | Community | MIT | (enthalten in grub-control-center/) |
+| ms-sys | Henrik Carlqvist | GPL | https://sourceforge.net/projects/ms-sys/ |
 
 ---
 

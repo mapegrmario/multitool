@@ -181,8 +181,7 @@ DEPENDENCIES=(
     "curl:curl:curl (Download)"
 
     # Optional
-    "zenity:zenity:Zenity (GRUB Control Center GUI)"
-    "os-prober:os-prober:OS-Erkennung für GRUB:optional"
+    "zenity:zenity:Zenity GTK-Dialoge:optional"
     "nala:nala:Nala APT-Frontend:optional"
     "fwupd:fwupdmgr:Firmware-Updates:optional"
     "wget:wget:wget:optional"
@@ -256,6 +255,7 @@ PY_FILES=(
     "main.py" "config.py" "models.py" "database.py" "security.py"
     "smart_engine.py" "wipe_engine.py" "recovery_engine.py"
     "gui_base.py" "gui_drives.py" "gui_system.py"
+    "gui_grub.py" "gui_drive_health.py" "gui_advanced.py"
 )
 for f in "${PY_FILES[@]}"; do
     if [[ -f "${SCRIPT_DIR}/${f}" ]]; then
@@ -267,96 +267,52 @@ for f in "${PY_FILES[@]}"; do
     fi
 done
 
-# Begleit-Skripte kopieren falls vorhanden
-COMPANION_SCRIPTS=(
-    "scriptkonverter2.sh"
-    "install-update_und_schutdown_mint.sh"
-    "diagnose.sh"
-    "systempflege.sh"
-    "system_optimizer.sh"
-    "boot-check-ein-oder_abschalten.sh"
-    "programm-autostart_mit_root.sh"
-    "Einmal-Starter.sh"
-    "Festplatte_einbinden.sh"
-    "Festplatten_anzeigen.sh"
+# Begleit-Skripte (Multitool-eigene) kopieren
+SH_FILES=(
+    "optimizer.sh"
+    "eggs-iso-tool.sh"
+    "drive-health-tool.sh"
 )
 echo ""
-info "Kopiere Begleit-Skripte (falls vorhanden)..."
-for s in "${COMPANION_SCRIPTS[@]}"; do
+info "Kopiere Shell-Scripts..."
+for s in "${SH_FILES[@]}"; do
     if [[ -f "${SCRIPT_DIR}/${s}" ]]; then
         cp "${SCRIPT_DIR}/${s}" "${INSTALL_DIR}/${s}"
         chmod 755 "${INSTALL_DIR}/${s}"
         success "  ${s} ✓"
+    else
+        warning "  ${s} – nicht gefunden, wird übersprungen"
+    fi
+done
+
+# grub-control-center/ Verzeichnis kopieren
+echo ""
+info "Kopiere grub-control-center/..."
+if [[ -d "${SCRIPT_DIR}/grub-control-center" ]]; then
+    cp -r "${SCRIPT_DIR}/grub-control-center" "${INSTALL_DIR}/grub-control-center"
+    chmod -R 755 "${INSTALL_DIR}/grub-control-center/scripts/" 2>/dev/null || true
+    gcc_count=$(find "${INSTALL_DIR}/grub-control-center" -name "*.sh" | wc -l)
+    success "grub-control-center/ (${gcc_count} Scripts)"
+else
+    warning "grub-control-center/ nicht gefunden – GRUB-Tab funktioniert eingeschränkt"
+fi
+
+# Alte Begleit-Skripte kopieren falls vorhanden
+COMPANION_SCRIPTS=(
+    "scriptkonverter2.sh" "install-update_und_schutdown_mint.sh"
+    "diagnose.sh" "systempflege.sh" "boot-check-ein-oder_abschalten.sh"
+    "programm-autostart_mit_root.sh" "Einmal-Starter.sh"
+    "Festplatte_einbinden.sh" "Festplatten_anzeigen.sh"
+)
+for s in "${COMPANION_SCRIPTS[@]}"; do
+    if [[ -f "${SCRIPT_DIR}/${s}" ]]; then
+        cp "${SCRIPT_DIR}/${s}" "${INSTALL_DIR}/${s}"
+        chmod 755 "${INSTALL_DIR}/${s}"
     fi
 done
 
 success "Programmdateien installiert: ${INSTALL_DIR}"
 
-# ── eggs-iso-tool.sh Skript kopieren ──────────────────────────────────────────
-step "Kopiere eggs-iso-tool.sh"
-for src in     "${SCRIPT_DIR}/eggs-iso-tool.sh"     "${SCRIPT_DIR}/../eggs-iso-tool.sh"; do
-    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
-    if [[ -f "${src_abs}" ]]; then
-        cp "${src_abs}" "${INSTALL_DIR}/eggs-iso-tool.sh"
-        chmod 755 "${INSTALL_DIR}/eggs-iso-tool.sh"
-        success "eggs-iso-tool.sh → ${INSTALL_DIR}/"
-        break
-    fi
-done
-
-# ── optimizer.sh kopieren ────────────────────────────────────────────────────
-step "Kopiere optimizer.sh"
-for src in "${SCRIPT_DIR}/optimizer.sh" "${SCRIPT_DIR}/../optimizer.sh"; do
-    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
-    if [[ -f "${src_abs}" ]]; then
-        cp "${src_abs}" "${INSTALL_DIR}/optimizer.sh"
-        chmod 755 "${INSTALL_DIR}/optimizer.sh"
-        success "optimizer.sh → ${INSTALL_DIR}/"
-        break
-    fi
-done
-
-# ── Laufwerk-Diagnose Scripts kopieren ───────────────────────────────────────
-step "Kopiere Laufwerk-Diagnose Scripts"
-for src in "${SCRIPT_DIR}/gui_drive_health.py" "${SCRIPT_DIR}/../gui_drive_health.py"; do
-    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
-    if [[ -f "${src_abs}" ]]; then
-        cp "${src_abs}" "${INSTALL_DIR}/gui_drive_health.py"
-        success "gui_drive_health.py → ${INSTALL_DIR}/"
-        break
-    fi
-done
-for src in "${SCRIPT_DIR}/drive-health-tool.sh" "${SCRIPT_DIR}/../drive-health-tool.sh"; do
-    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
-    if [[ -f "${src_abs}" ]]; then
-        cp "${src_abs}" "${INSTALL_DIR}/drive-health-tool.sh"
-        chmod 755 "${INSTALL_DIR}/drive-health-tool.sh"
-        success "drive-health-tool.sh → ${INSTALL_DIR}/"
-        break
-    fi
-done
-
-# ── GRUB Control Center kopieren ─────────────────────────────────────────────
-step "Kopiere GRUB Control Center Scripts"
-for src in "${SCRIPT_DIR}/grub-control-center" "${SCRIPT_DIR}/../grub-control-center"; do
-    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
-    if [[ -d "${src_abs}" ]]; then
-        cp -r "${src_abs}" "${INSTALL_DIR}/grub-control-center"
-        chmod -R 755 "${INSTALL_DIR}/grub-control-center/scripts/"
-        success "grub-control-center → ${INSTALL_DIR}/grub-control-center/"
-        break
-    fi
-done
-
-# ── GRUB gui_grub.py kopieren ─────────────────────────────────────────────────
-for src in "${SCRIPT_DIR}/gui_grub.py" "${SCRIPT_DIR}/../gui_grub.py"; do
-    src_abs="$(realpath "${src}" 2>/dev/null || echo "")"
-    if [[ -f "${src_abs}" ]]; then
-        cp "${src_abs}" "${INSTALL_DIR}/gui_grub.py"
-        success "gui_grub.py → ${INSTALL_DIR}/"
-        break
-    fi
-done
 
 # ── Penguins-Eggs .deb installieren (optional) ────────────────────────────────
 step "Prüfe penguins-eggs Installation"

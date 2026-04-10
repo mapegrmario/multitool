@@ -68,6 +68,7 @@ class DrivesTabs(GuiBase):
         self.all_drives = drives
         self._update_recovery_combo()
         self._update_wipe_list()
+        self._update_smart_combo()
         self._update_iso_targets()
         self._update_clone_combos()
 
@@ -101,6 +102,14 @@ class DrivesTabs(GuiBase):
                         d.mount_point or "—",
                         "✓" if d.is_ssd or d.is_nvme else ""),
                 tags=(tag,))
+
+    def _update_smart_combo(self):
+        if not hasattr(self, 'smart_dev_cb'):
+            return
+        vals = [d.device for d in self.all_drives]
+        self.smart_dev_cb['values'] = vals
+        if vals and not self.smart_dev_var.get():
+            self.smart_dev_cb.current(0)
 
     def _update_iso_targets(self):
         if not hasattr(self, 'iso_target_cb'):
@@ -324,6 +333,8 @@ class DrivesTabs(GuiBase):
         self.wipe_stop_btn.pack(side='left', padx=4)
         ttk.Button(btn_f, text="\U0001f504 Aktualisieren",
                    command=self.app.refresh_drives).pack(side='left', padx=4)
+        ttk.Button(btn_f, text="nwipe (Terminal)",
+                   command=self._wipe_nwipe).pack(side='left', padx=4)
         ttk.Button(btn_f, text="\U0001f4cb Log kopieren",
                    command=lambda: self.copy_log(self.wipe_log)).pack(side='right', padx=4)
 
@@ -736,6 +747,168 @@ class DrivesTabs(GuiBase):
 
     # ══════════════════════════════════════════════════════════════════════
     #  TAB: SMART-MONITOR
+    # ══════════════════════════════════════════════════════════════════════
+    def _build_smart_tab(self, nb):
+        T   = self.theme
+        tab = ttk.Frame(nb)
+        nb.add(tab, text="📊 SMART-Monitor")
+        pane = tk.Frame(tab, bg=T["bg"])
+        pane.pack(fill='both', expand=True, padx=12, pady=10)
+
+        sel_f = ttk.LabelFrame(pane, text=" Gerät auswählen ", padding=8)
+        sel_f.pack(fill='x', pady=(0, 8))
+        self.smart_dev_var = tk.StringVar()
+        self.smart_dev_cb  = ttk.Combobox(sel_f, textvariable=self.smart_dev_var,
+                                          state='readonly', width=30)
+        self.smart_dev_cb.pack(side='left', padx=(0, 8))
+        ttk.Button(sel_f, text="🔍 SMART auslesen",
+                   command=self._read_smart).pack(side='left', padx=4)
+        ttk.Button(sel_f, text="📈 Verlauf anzeigen",
+                   command=self._show_smart_history).pack(side='left', padx=4)
+        ttk.Button(sel_f, text="💾 In DB speichern",
+                   command=self._save_smart_to_db).pack(side='left', padx=4)
+
+        attr_f = ttk.LabelFrame(pane, text=" SMART-Attribute ", padding=8)
+        attr_f.pack(fill='both', expand=True, pady=(0, 8))
+        scols = ('ID', 'Attribut', 'Wert', 'Worst', 'Thresh', 'Raw', 'Status')
+        self.smart_tree = ttk.Treeview(attr_f, columns=scols, show='headings', height=10)
+        sw = {'ID':40,'Attribut':200,'Wert':55,'Worst':55,'Thresh':55,'Raw':110,'Status':100}
+        for c in scols:
+            self.smart_tree.heading(c, text=c)
+            self.smart_tree.column(c, width=sw.get(c, 100))
+        self.smart_tree.tag_configure('warn', background=T["tag_system"])
+        self.smart_tree.tag_configure('crit', background=T["tag_internal"])
+        ssb = ttk.Scrollbar(attr_f, orient='vertical', command=self.smart_tree.yview)
+        self.smart_tree.configure(yscrollcommand=ssb.set)
+        self.smart_tree.pack(side='left', fill='both', expand=True)
+        ssb.pack(side='right', fill='y')
+
+        smart_btn_f = tk.Frame(pane, bg=T["bg"])
+        smart_btn_f.pack(fill='x', pady=(0, 8))
+        ttk.Button(smart_btn_f, text="📋 Tabelle kopieren",
+                   command=self._copy_smart_table).pack(side='left', padx=4)
+        ttk.Button(smart_btn_f, text="💾 Als Textdatei speichern",
+                   command=self._save_smart_as_txt).pack(side='left', padx=4)
+
+        hist_f = ttk.LabelFrame(pane, text=" SMART-Verlauf (letzte 90 Tage) ", padding=8)
+        hist_f.pack(fill='both', expand=True)
+        self.smart_hist_log = self.make_log_widget(hist_f, height=8)
+        self.smart_hist_log.pack(fill='both', expand=True)
+
+    def _read_smart(self):
+        dev = self.smart_dev_var.get()
+        if not dev:
+            return
+        for row in self.smart_tree.get_children():
+            self.smart_tree.delete(row)
+        attrs = query_smart_attributes(dev)
+        if not attrs:
+            messagebox.showinfo("SMART", f"Keine Daten für {dev}.")
+            return
+        for a in attrs:
+            self.smart_tree.insert('', 'end',
+                values=(a['id'], a['name'], a['value'], a['worst'],
+                        a['thresh'], a['raw'], a['status']),
+                tags=(a['tag'],) if a['tag'] else ())
+
+    def _save_smart_to_db(self):
+        dev = self.smart_dev_var.get()
+        if not dev:
+            return
+        attrs = {}
+        for row in self.smart_tree.get_children():
+            vals = self.smart_tree.item(row)['values']
+            if vals:
+                try:
+                    attrs[str(vals[1])] = {
+                        "normalized": int(vals[2]),
+                        "raw": int(str(vals[5]).split()[0]) if str(vals[5]).split() else 0
+                    }
+                except Exception:
+                    pass
+        if attrs:
+            self.smart_db.record(dev, attrs)
+            messagebox.showinfo("SMART", f"✅ {len(attrs)} Attribute gespeichert.")
+
+    def _smart_table_as_text(self) -> str:
+        import datetime
+        dev    = self.smart_dev_var.get() or "Unbekannt"
+        ts     = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cols   = ('ID', 'Attribut', 'Wert', 'Worst', 'Thresh', 'Raw', 'Status')
+        widths = [len(c) for c in cols]
+        rows   = []
+        for iid in self.smart_tree.get_children():
+            vals = [str(v) for v in self.smart_tree.item(iid)['values']]
+            rows.append(vals)
+            for i, v in enumerate(vals):
+                widths[i] = max(widths[i], len(v))
+        sep    = "-" * (sum(widths) + len(widths) * 3 + 1)
+        header = "| " + " | ".join(c.ljust(widths[i]) for i, c in enumerate(cols)) + " |"
+        out    = ["SMART-Bericht: " + dev, "Erstellt:      " + ts, sep, header, sep]
+        for vals in rows:
+            out.append("| " + " | ".join(v.ljust(widths[i]) for i, v in enumerate(vals)) + " |")
+        out.append(sep)
+        return "\n".join(out)
+
+    def _copy_smart_table(self):
+        if not self.smart_tree.get_children():
+            messagebox.showinfo("SMART", "Tabelle leer – bitte zuerst SMART auslesen.")
+            return
+        text = self._smart_table_as_text()
+        self.root.clipboard_clear()
+        self.root.clipboard_append(text)
+        self.root.update()
+        messagebox.showinfo("Kopiert", "SMART-Tabelle kopiert.")
+
+    def _save_smart_as_txt(self):
+        if not self.smart_tree.get_children():
+            messagebox.showinfo("SMART", "Tabelle leer – bitte zuerst SMART auslesen.")
+            return
+        import datetime
+        dev  = self.smart_dev_var.get().replace("/dev/", "").replace("/", "_")
+        ts   = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M")
+        path = filedialog.asksaveasfilename(
+            title="SMART-Tabelle speichern",
+            initialfile=f"smart_{dev}_{ts}.txt",
+            initialdir=str(USER_HOME),
+            defaultextension=".txt",
+            filetypes=[("Textdateien", "*.txt"), ("Alle Dateien", "*")])
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(self._smart_table_as_text())
+            messagebox.showinfo("Gespeichert", "Gespeichert: " + path)
+        except Exception as e:
+            messagebox.showerror("Fehler", str(e))
+
+    def _show_smart_history(self):
+        dev = self.smart_dev_var.get()
+        if not dev:
+            return
+        attrs = self.smart_db.get_attributes(dev)
+        if not attrs:
+            messagebox.showinfo("Kein Verlauf",
+                f"Keine Verlaufsdaten für {dev}.\nBitte zuerst 'In DB speichern'.")
+            return
+        import datetime
+        lines_out = [f"SMART-Verlauf: {dev}",
+                     f"Erstellt: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                     "=" * 60]
+        for attr in attrs:
+            data = self.smart_db.get_history(dev, attr, days=90)
+            if not data:
+                continue
+            lines_out.append(f"\nAttribut: {attr}  ({len(data)} Messwerte)")
+            lines_out.append(f"  {'Zeitstempel':<20}  {'Raw-Wert':>12}")
+            lines_out.append(f"  {'-'*20}  {'-'*12}")
+            for ts, val in data:
+                lines_out.append(f"  {str(ts)[:19]:<20}  {str(val or 0):>12}")
+        lines_out.append("\n" + "=" * 60)
+        self.log_to(self.smart_hist_log, "\n".join(lines_out), clear=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    #  TAB: ISO-BRENNER
     # ══════════════════════════════════════════════════════════════════════
     def _build_iso_tab(self, nb):
         T   = self.theme
@@ -1572,3 +1745,48 @@ class DrivesTabs(GuiBase):
                      "Bitte install-peessi-multitool.sh erneut ausführen.",
                 bg=T["bg"], fg=T["danger"],
                 font=("Arial", 11)).pack(expand=True)
+
+    def _wipe_nwipe(self):
+        """nwipe im Terminal starten."""
+        import shutil as _sh
+        if not _sh.which("nwipe"):
+            messagebox.showerror("nwipe fehlt",
+                "nwipe ist nicht installiert.\n\n"
+                "sudo apt install nwipe")
+            return
+        # Gewähltes Laufwerk aus Wipe-Tab
+        sel = self.wipe_tree.selection()
+        dev = ""
+        if sel:
+            dev = self.wipe_tree.item(sel[0])['values'][0]
+        if not dev:
+            messagebox.showinfo("Hinweis",
+                "Bitte zuerst ein Laufwerk in der Liste auswählen.")
+            return
+        if not messagebox.askyesno("nwipe starten",
+            f"nwipe für {dev} im Terminal starten?\n\n"
+            "⚠️  ALLE DATEN werden unwiderruflich gelöscht!",
+            icon="warning"):
+            return
+        # Terminal finden und nwipe starten
+        import subprocess as _sp
+        term = None
+        for t in ("xterm","gnome-terminal","xfce4-terminal","mate-terminal","lxterminal"):
+            if _sh.which(t):
+                term = t; break
+        if not term:
+            messagebox.showerror("Fehler",
+                "Kein Terminal-Emulator gefunden.\nsudo apt install xterm")
+            return
+        cmd_str = f"nwipe {dev}"
+        if term == "xterm":
+            args = ["xterm","-T","nwipe – Sicheres Löschen","-geometry","100x35",
+                    "-e",f"bash -c '{cmd_str}; echo; echo Fertig – Enter; read'"]
+        elif term == "gnome-terminal":
+            args = ["gnome-terminal","--title","nwipe","--","bash","-c",
+                    f"{cmd_str}; echo; read"]
+        else:
+            args = [term,"-e",f"bash -c '{cmd_str}; echo; read'"]
+        _sp.Popen(args)
+        self.log_to(self.wipe_log,
+            f"nwipe für {dev} wurde in einem Terminal gestartet.\n")

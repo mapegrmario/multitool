@@ -95,6 +95,11 @@ try:
     from gui_drives     import DrivesTabs
     from gui_system     import (DashboardTab, SystemTab, NetworkTab,
                                 LogsTab, SettingsTab, AboutTab)
+    try:
+        from gui_advanced   import AdvancedTabs
+        _ADVANCED_AVAILABLE = True
+    except ImportError:
+        _ADVANCED_AVAILABLE = False
 except ImportError as e:
     print(f"FEHLER: Modul konnte nicht geladen werden: {e}")
     print(f"Installationsverzeichnis: {INSTALL_DIR}")
@@ -173,6 +178,8 @@ class App:
         self.logs_tab      = LogsTab(self.nb_main, self)
         self.settings_tab  = SettingsTab(self.nb_main, self)
         self.about_tab     = AboutTab(self.nb_main, self)
+        if _ADVANCED_AVAILABLE:
+            self.advanced_tab = AdvancedTabs(self.nb_main, self)
 
         # Statusleiste
         tk.Frame(self.root, bg=T["border"], height=1).pack(fill='x')

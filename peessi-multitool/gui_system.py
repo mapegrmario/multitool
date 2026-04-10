@@ -1159,9 +1159,15 @@ sync; sleep 1; systemctl poweroff
             if ev.delta: canvas.yview_scroll(int(-1*(ev.delta/120)), "units")
             elif ev.num == 4: canvas.yview_scroll(-1, "units")
             elif ev.num == 5: canvas.yview_scroll(1, "units")
-        canvas.bind("<MouseWheel>", _sc)
-        canvas.bind("<Button-4>",   _sc)
-        canvas.bind("<Button-5>",   _sc)
+        def _bind_rec(w):
+            w.bind("<MouseWheel>", _sc, add="+")
+            w.bind("<Button-4>",   _sc, add="+")
+            w.bind("<Button-5>",   _sc, add="+")
+            for child in w.winfo_children():
+                _bind_rec(child)
+
+        _bind_rec(canvas)
+        pane.bind("<Configure>", lambda e: _bind_rec(canvas), add="+")
 
         inner = tk.Frame(pane, bg=T["bg"])
         inner.pack(fill='both', expand=True, padx=12, pady=10)
@@ -1952,6 +1958,8 @@ class LogsTab(GuiBase):
                    command=lambda: self.clear_log(self.log_view)).pack(side='left', padx=4)
         ttk.Button(ctrl, text="\U0001f4cb Kopieren",
                    command=lambda: self.copy_log(self.log_view)).pack(side='left', padx=4)
+        ttk.Button(ctrl, text="\U0001f4be Alle Logs speichern",
+                   command=self._export_all_logs).pack(side='left', padx=4)
 
         src_frame = ttk.LabelFrame(pane, text=" Log-Quelle ", padding=6)
         src_frame.pack(fill='x', pady=(0, 8))
@@ -1989,6 +1997,49 @@ class LogsTab(GuiBase):
     def _auto_load_logs(self):
         if not self._log_cache:
             self._load_all_logs()
+
+    def _export_all_logs(self):
+        """Alle geladenen Logs in einen wählbaren Ordner speichern."""
+        import datetime as _dt
+        if not self._log_cache:
+            messagebox.showinfo("Hinweis",
+                "Keine Logs geladen. Bitte zuerst '🔄 Alle laden' klicken.")
+            return
+        dest = filedialog.askdirectory(title="Ordner für Logs wählen")
+        if not dest:
+            return
+        ts      = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder  = os.path.join(dest, f"peessi-logs-{ts}")
+        os.makedirs(folder, exist_ok=True)
+        saved, failed = [], []
+        for key, text in self._log_cache.items():
+            fname = os.path.join(folder, f"{key}.log")
+            try:
+                with open(fname, "w", encoding="utf-8", errors="replace") as f:
+                    f.write(text)
+                saved.append(key)
+            except Exception as e:
+                failed.append(f"{key}: {e}")
+        # Übersichtsdatei
+        try:
+            with open(os.path.join(folder, "_index.txt"), "w") as f:
+                f.write(f"Peeßi's System Multitool – Log-Export\n")
+                f.write(f"Datum   : {_dt.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n")
+                f.write(f"Ordner  : {folder}\n\n")
+                f.write("Gespeicherte Logs:\n")
+                for s in saved:
+                    f.write(f"  ✅  {s}.log\n")
+                if failed:
+                    f.write("\nFehler:\n")
+                    for e in failed:
+                        f.write(f"  ❌  {e}\n")
+        except Exception:
+            pass
+        msg = f"✅ {len(saved)} Log(s) gespeichert:\n{folder}"
+        if failed:
+            msg += f"\n\n❌ Fehler ({len(failed)}):\n" + "\n".join(failed)
+        messagebox.showinfo("Logs gespeichert", msg)
+
 
     def _load_all_logs(self):
         self.clear_log(self.log_view)
@@ -2603,7 +2654,6 @@ class AboutTab(GuiBase):
             "⚙️  System             –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
             "🐧  Eggs-ISO           –  Live-ISO erstellen (Programme/Design/Vollklon), Calamares",
             "🔧  GRUB               –  Boot-Einstellungen, Themes, Backup, System-Analyse (GRUB CC v2.1.1)",
-            "🩺  Laufwerk-Diagnose  –  S.M.A.R.T. + Badblocks Oberflächenscan, Log ~/DriveTests/",
             "🩺  Laufwerk-Diagnose  –  S.M.A.R.T. + Badblocks Oberflächenscan, Log ~/DriveTests/",
             "🌐  Netzwerk           –  Interfaces, Ping, Verbindungen (sortierbar+kopierbar), WLAN-Keys",
             "📋  Logs & Diagnose   –  Viewer mit Farbmarkierung + Suche, HTML-Systembericht",
