@@ -337,7 +337,8 @@ class DriveHealthTab:
             v = self._smart_tree.item(row)["values"]
             if v:
                 try: attrs[str(v[1])] = {"normalized":int(v[2]),"raw":int(str(v[5]).split()[0])}
-                except: pass
+                except Exception as _e:
+                    import logging as _l; _l.warning('%s: %s', __file__, _e)
         if attrs:
             self._smart_db.record(dev, attrs)
             messagebox.showinfo("SMART", f"✅ {len(attrs)} Attribute gespeichert.")
@@ -485,10 +486,15 @@ class DriveHealthTab:
         threading.Thread(target=worker, daemon=True).start()
 
     def _bb_stop(self):
-        if self._proc:
-            try: self._proc.terminate()
-            except: pass
+        with self._proc_lock:
+            proc = self._proc
             self._proc = None
+        if proc:
+            try:
+                proc.terminate()
+            except Exception as e:
+                import logging as _log
+                _log.warning(f"bb_stop terminate: {e}")
             self._bb_write("\n⏹ Abgebrochen.\n")
         self._bb_done()
 

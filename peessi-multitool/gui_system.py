@@ -563,115 +563,34 @@ class SystemTab(GuiBase):
     # ── BIOS/EFI ─────────────────────────────────────────────────────────────
     def _build_bios(self, nb):
         T   = self.theme
-        _, pane = self.make_scrollable_tab(nb, "⚙️ BIOS/EFI")
-        pane.configure(padx=12, pady=10)
+        tab = ttk.Frame(nb)
+        nb.add(tab, text="⚙️ BIOS/EFI")
+        pane = tk.Frame(tab, bg=T["bg"])
+        pane.pack(fill='both', expand=True, padx=12, pady=10)
 
-        # ── Boot-Einträge Übersicht ────────────────────────────────────────
-        ov_f = ttk.LabelFrame(pane, text=" Boot-Einträge ", padding=8)
-        ov_f.pack(fill="both", expand=True, pady=(0, 8))
+        btn_grid = tk.Frame(pane, bg=T["bg"])
+        btn_grid.pack(fill='x', pady=(0, 8))
+        actions = [
+            ("🖫 USB-Boot forcieren",     self._bios_usb_boot),
+            ("🔧 Ins BIOS neu starten",   self._bios_reboot_bios),
+            ("🧹 Boot-Menü aufräumen",     self._bios_cleanup),
+            ("🗑 Eintrag löschen",         self._bios_delete_single),
+            ("⏱ Timeout einstellen",       self._bios_timeout),
+            ("↕ Boot-Reihenfolge",         self._bios_bootorder),
+            ("✔ Ein-/Ausschalten",         self._bios_toggle_entry),
+            ("💾 EFI-Backup",              self._bios_backup),
+            ("♻ Backup wiederherstellen",  self._bios_restore),
+            ("🔄 Aktualisieren",           self._bios_refresh_info),
+        ]
+        for i, (label, cmd) in enumerate(actions):
+            ttk.Button(btn_grid, text=label, command=cmd).grid(
+                row=i // 5, column=i % 5, padx=4, pady=3, sticky='ew')
+            btn_grid.columnconfigure(i % 5, weight=1)
 
-        cols = ("Aktiv", "ID", "Name", "Pfad")
-        self._bios_tree = ttk.Treeview(ov_f, columns=cols, show="headings", height=8)
-        widths = {"Aktiv": 50, "ID": 70, "Name": 220, "Pfad": 350}
-        for c in cols:
-            self._bios_tree.heading(c, text=c)
-            self._bios_tree.column(c, width=widths[c], anchor="w")
-        self._bios_tree.tag_configure("active",   foreground=T["success"])
-        self._bios_tree.tag_configure("inactive", foreground=T["fg_dim"])
-        sb_tree = ttk.Scrollbar(ov_f, orient="vertical",
-                                command=self._bios_tree.yview)
-        self._bios_tree.configure(yscrollcommand=sb_tree.set)
-        self._bios_tree.pack(side="left", fill="both", expand=True)
-        sb_tree.pack(side="right", fill="y")
-
-        hdr = tk.Frame(pane, bg=T["bg"]); hdr.pack(fill="x", pady=(0, 8))
-        ttk.Button(hdr, text="🔄 Einträge neu laden",
-                   command=self._bios_refresh_info).pack(side="left", padx=(0, 8))
-        ttk.Button(hdr, text="🔧 Ins BIOS/UEFI neu starten",
-                   command=self._bios_reboot_bios).pack(side="left", padx=(0, 8))
-        ttk.Button(hdr, text="💾 Backup erstellen",
-                   command=self._bios_backup).pack(side="left")
-
-        # ── Ausgewählten Eintrag bearbeiten ───────────────────────────────
-        sel_f = ttk.LabelFrame(pane,
-            text=" Ausgewählten Eintrag bearbeiten (in Liste anklicken) ",
-            padding=8)
-        sel_f.pack(fill="x", pady=(0, 8))
-        self._bios_sel_lbl = tk.Label(sel_f, text="– kein Eintrag ausgewählt –",
-                                       bg=T["bg"], fg=T["fg_dim"],
-                                       font=("Arial", 9, "italic"))
-        self._bios_sel_lbl.pack(anchor="w", pady=(0, 6))
-        self._bios_tree.bind("<<TreeviewSelect>>", self._bios_on_select)
-
-        sel_btns = tk.Frame(sel_f, bg=T["bg"]); sel_btns.pack(fill="x")
-        self._bios_del_btn = ttk.Button(sel_btns, text="🗑 Eintrag löschen",
-                                         style="Danger.TButton",
-                                         command=self._bios_delete_single,
-                                         state="disabled")
-        self._bios_del_btn.pack(side="left", padx=(0, 6))
-        self._bios_toggle_btn = ttk.Button(sel_btns, text="✔ Aktivieren / Deaktivieren",
-                                            command=self._bios_toggle_entry,
-                                            state="disabled")
-        self._bios_toggle_btn.pack(side="left", padx=(0, 6))
-        self._bios_usb_btn = ttk.Button(sel_btns, text="🖫 Einmalig als nächsten Boot setzen",
-                                         command=self._bios_usb_boot_selected,
-                                         state="disabled")
-        self._bios_usb_btn.pack(side="left")
-
-        # ── Timeout ────────────────────────────────────────────────────────
-        to_f = ttk.LabelFrame(pane, text=" Boot-Timeout ", padding=8)
-        to_f.pack(fill="x", pady=(0, 8))
-        to_row = tk.Frame(to_f, bg=T["bg"]); to_row.pack(fill="x")
-        tk.Label(to_row, text="Timeout (Sekunden):",
-                 bg=T["bg"], fg=T["fg"], font=("Arial", 9)).pack(side="left", padx=(0, 8))
-        self._bios_timeout_var = tk.StringVar(value="5")
-        ttk.Spinbox(to_row, from_=0, to=60, width=6,
-                    textvariable=self._bios_timeout_var).pack(side="left", padx=(0, 8))
-        ttk.Button(to_row, text="✔ Setzen",
-                   command=self._bios_timeout).pack(side="left")
-
-        # ── Boot-Reihenfolge ───────────────────────────────────────────────
-        bo_f = ttk.LabelFrame(pane, text=" Boot-Reihenfolge ", padding=8)
-        bo_f.pack(fill="x", pady=(0, 8))
-        tk.Label(bo_f, text=(
-            "Kommagetrennte Boot-IDs, z.B.:  0001,0000,0003\n"
-            "(Aktuelle Reihenfolge wird oben in der Tabelle angezeigt)"
-        ), bg=T["bg"], fg=T["fg_dim"], font=("Arial", 9)).pack(anchor="w")
-        bo_row = tk.Frame(bo_f, bg=T["bg"]); bo_row.pack(fill="x", pady=(6, 0))
-        self._bios_order_var = tk.StringVar()
-        ttk.Entry(bo_row, textvariable=self._bios_order_var,
-                  width=30).pack(side="left", padx=(0, 8))
-        ttk.Button(bo_row, text="✔ Reihenfolge setzen",
-                   command=self._bios_bootorder).pack(side="left")
-
-        # ── Backup wiederherstellen ────────────────────────────────────────
-        bk_f = ttk.LabelFrame(pane, text=" EFI-Backup wiederherstellen ", padding=8)
-        bk_f.pack(fill="x", pady=(0, 8))
-        bk_row = tk.Frame(bk_f, bg=T["bg"]); bk_row.pack(fill="x")
-        ttk.Button(bk_row, text="♻ Backup auswählen und BootOrder wiederherstellen",
-                   command=self._bios_restore).pack(side="left")
-
-        # ── Aufräumen ──────────────────────────────────────────────────────
-        cl_f = ttk.LabelFrame(pane, text=" Boot-Menü aufräumen ", padding=8)
-        cl_f.pack(fill="x", pady=(0, 8))
-        tk.Label(cl_f, text=(
-            "Sucht und löscht veraltete/doppelte Einträge\n"
-            "(Debian, LMDE, alte GRUB-Einträge)"
-        ), bg=T["bg"], fg=T["fg_dim"], font=("Arial", 9)).pack(anchor="w")
-        ttk.Button(cl_f, text="🧹 Aufräumen",
-                   command=self._bios_cleanup).pack(anchor="w", pady=(6, 0))
-
-        # ── Ausgabe ────────────────────────────────────────────────────────
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
-        log_f.pack(fill="both", expand=True)
-        self.bios_log = self.make_log_widget(log_f, height=10)
-        self.bios_log.pack(fill="both", expand=True)
-        btn_row2 = tk.Frame(pane, bg=T["bg"]); btn_row2.pack(fill="x", pady=(4, 0))
-        ttk.Button(btn_row2, text="🗑 Log leeren",
-                   command=lambda: self.clear_log(self.bios_log)).pack(side="left")
-        ttk.Button(btn_row2, text="📋 Kopieren",
-                   command=lambda: self.copy_log(self.bios_log)).pack(side="left", padx=6)
-
+        log_f = ttk.LabelFrame(pane, text=" efibootmgr Ausgabe ", padding=8)
+        log_f.pack(fill='both', expand=True)
+        self.bios_log = self.make_log_widget(log_f, height=22)
+        self.bios_log.pack(fill='both', expand=True)
         self._bios_refresh_info()
 
     def _bios_run(self, cmd: list):
@@ -688,95 +607,31 @@ class SystemTab(GuiBase):
         self.clear_log(self.bios_log)
         def worker():
             out, rc = self._bios_run(['efibootmgr', '-v'])
-            if rc != 0:
-                self.root.after(0, lambda: self._bios_log_msg(f"Fehler: {out}"))
-                return
-            # Treeview befüllen
-            entries = []
-            boot_order = ""
-            timeout_val = ""
-            for line in out.splitlines():
-                if line.startswith("BootOrder:"):
-                    boot_order = line.split(":", 1)[1].strip()
-                elif line.startswith("Timeout:"):
-                    timeout_val = re.search(r"\d+", line)
-                    timeout_val = timeout_val.group() if timeout_val else ""
-                m = re.match(r'Boot([0-9A-Fa-f]{4})(\*?) (.+)', line)
-                if m:
-                    bid   = m.group(1)
-                    aktiv = "✅" if m.group(2) == "*" else "⬜"
-                    rest  = m.group(3)
-                    # Pfad extrahieren
-                    name = re.split(r'\t|File\(|HD\(', rest)[0].strip()
-                    path = ""
-                    pm = re.search(r'File\(([^)]+)\)', rest)
-                    if pm:
-                        path = pm.group(1)
-                    entries.append((aktiv, bid, name, path,
-                                   "active" if m.group(2) == "*" else "inactive"))
-            def update_ui():
-                for item in self._bios_tree.get_children():
-                    self._bios_tree.delete(item)
-                for aktiv, bid, name, path, tag in entries:
-                    self._bios_tree.insert("", "end",
-                        values=(aktiv, f"Boot{bid}", name, path),
-                        tags=(tag,), iid=bid)
-                # Timeout-Spinbox aktualisieren
-                if timeout_val and hasattr(self, "_bios_timeout_var"):
-                    self._bios_timeout_var.set(timeout_val)
-                # Boot-Reihenfolge anzeigen
-                if boot_order and hasattr(self, "_bios_order_var"):
-                    self._bios_order_var.set(
-                        ",".join(boot_order.replace(",","").split()))
-                # Ins Log: Kurzübersicht
-                self._bios_log_msg(
-                    f"Boot-Reihenfolge: {boot_order}\n"
-                    f"Timeout: {timeout_val}s\n"
-                    f"{len(entries)} Einträge geladen.")
-            self.root.after(0, update_ui)
+            self.root.after(0, lambda: self._bios_log_msg(
+                out if rc == 0 else f"Fehler: {out}"))
         threading.Thread(target=worker, daemon=True).start()
 
-    def _bios_on_select(self, event=None):
-        sel = self._bios_tree.selection()
-        if sel:
-            iid = sel[0]
-            vals = self._bios_tree.item(iid, "values")
-            aktiv, bid, name, path = vals
-            self._bios_sel_lbl.config(
-                text=f"{bid}  {aktiv}  {name}",
-                fg=self.theme["success"] if aktiv == "✅" else self.theme["fg_dim"])
-            for btn in (self._bios_del_btn, self._bios_toggle_btn, self._bios_usb_btn):
-                btn.config(state="normal")
-        else:
-            self._bios_sel_lbl.config(
-                text="– kein Eintrag ausgewählt –", fg=self.theme["fg_dim"])
-            for btn in (self._bios_del_btn, self._bios_toggle_btn, self._bios_usb_btn):
-                btn.config(state="disabled")
-
     def _bios_usb_boot(self):
-        """Veraltet – wird nicht mehr direkt aufgerufen."""
-        pass
-
-    def _bios_usb_boot_selected(self):
-        """Setzt den ausgewählten Eintrag als einmaligen nächsten Boot."""
-        sel = self._bios_tree.selection()
-        if not sel:
-            return
-        bid  = sel[0]
-        name = self._bios_tree.item(bid, "values")[2]
-        if not messagebox.askyesno("Einmaligen Boot setzen",
-            f"Boot{bid} ({name}) für den nächsten Start setzen\n"
-            "und sofort neu starten?"):
-            return
         def worker():
-            _, rc = self._bios_run(['efibootmgr', '-n', bid])
-            if rc == 0:
-                self.root.after(0, lambda: self._bios_log_msg(
-                    f"✅ Boot{bid} gesetzt – Reboot..."))
-                subprocess.Popen(['reboot'])
-            else:
-                self.root.after(0, lambda: self._bios_log_msg(
-                    f"❌ Fehler beim Setzen von Boot{bid}"))
+            out, _ = self._bios_run(['efibootmgr'])
+            ids = re.findall(
+                r'Boot([0-9A-Fa-f]{4})[* ].*?(?:USB|removable|Kingston|SanDisk)',
+                out, re.IGNORECASE)
+            if not ids:
+                self.root.after(0, lambda: messagebox.showwarning(
+                    "Nicht gefunden", "Kein USB-Boot-Eintrag."))
+                return
+            sel = simpledialog.askstring("USB-Boot",
+                f"Boot-IDs:\n{chr(10).join(ids)}\n\nID eingeben:", parent=self.root)
+            if not sel or not re.match(r'^[0-9A-Fa-f]{4}$', sel.strip()):
+                return
+            sel = sel.strip().upper()
+            if messagebox.askyesno("Bestätigung",
+                f"Boot{sel} für nächsten Start + Neustart?"):
+                _, rc = self._bios_run(['efibootmgr', '-n', sel])
+                if rc == 0:
+                    self._bios_log_msg(f"✅ Boot{sel} gesetzt. Reboot...")
+                    subprocess.Popen(['reboot'])
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_reboot_bios(self):
@@ -802,70 +657,59 @@ class SystemTab(GuiBase):
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_delete_single(self):
-        sel = self._bios_tree.selection()
-        if not sel:
-            return
-        bid  = sel[0]
-        name = self._bios_tree.item(bid, "values")[2]
-        if not messagebox.askyesno("Eintrag löschen",
-            f"Boot{bid} ({name}) wirklich löschen?\n\n"
-            "⚠️  Diese Aktion ist unwiderruflich!", icon="warning"):
-            return
         def worker():
-            _, rc = self._bios_run(['efibootmgr', '-b', bid, '-B'])
-            self.root.after(0, lambda: (
-                self._bios_log_msg(
-                    f"{'✅' if rc==0 else '❌'} Boot{bid} {'gelöscht' if rc==0 else 'Fehler'}"),
-                self._bios_refresh_info()))
+            out, _ = self._bios_run(['efibootmgr'])
+            self.root.after(0, lambda: self._bios_log_msg(out))
+            del_id = simpledialog.askstring("Eintrag löschen",
+                "Boot-ID (4 Hex-Zeichen):", parent=self.root)
+            if not del_id or not re.match(r'^[0-9A-Fa-f]{4}$', del_id.strip()):
+                return
+            del_id = del_id.strip().upper()
+            if messagebox.askyesno("Löschen", f"Boot{del_id} wirklich löschen?"):
+                _, rc = self._bios_run(['efibootmgr', '-b', del_id, '-B'])
+                self.root.after(0, lambda: (
+                    self._bios_log_msg(f"{'✅' if rc==0 else '❌'} Boot{del_id}"),
+                    self._bios_refresh_info()))
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_timeout(self):
-        t = self._bios_timeout_var.get().strip()
-        if not t.isdigit():
-            messagebox.showerror("Fehler", "Bitte eine Zahl eingeben."); return
         def worker():
-            _, rc = self._bios_run(['efibootmgr', '-t', t])
-            self.root.after(0, lambda: (
-                self._bios_log_msg(f"{'✅' if rc==0 else '❌'} Timeout: {t}s"),
-                self._bios_refresh_info()))
+            t = simpledialog.askstring("Timeout",
+                "Neue Wartezeit in Sekunden (Empfehlung: 3–5):", parent=self.root)
+            if t and t.strip().isdigit():
+                _, rc = self._bios_run(['efibootmgr', '-t', t.strip()])
+                self.root.after(0, lambda: (
+                    self._bios_log_msg(f"{'✅' if rc==0 else '❌'} Timeout: {t}s"),
+                    self._bios_refresh_info()))
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_bootorder(self):
-        order = self._bios_order_var.get().strip()
-        if not order:
-            messagebox.showerror("Fehler", "Bitte Boot-Reihenfolge eingeben."); return
-        if not re.match(r'^[0-9A-Fa-f]{4}(,[0-9A-Fa-f]{4})*$', order):
-            messagebox.showerror("Fehler",
-                "Format: Kommagetrennte 4-stellige Hex-IDs, z.B. 0001,0000,0003"); return
-        if not messagebox.askyesno("Boot-Reihenfolge setzen",
-            f"Neue Reihenfolge: {order}\n\nJetzt setzen?"):
-            return
         def worker():
-            _, rc = self._bios_run(['efibootmgr', '-o', order])
-            self.root.after(0, lambda: (
-                self._bios_log_msg(f"{'✅' if rc==0 else '❌'} Reihenfolge: {order}"),
-                self._bios_refresh_info()))
+            order = simpledialog.askstring("Boot-Reihenfolge",
+                "Reihenfolge (z.B. 0000,0002,0005):", parent=self.root)
+            if order and re.match(r'^[0-9A-Fa-f]{4}(,[0-9A-Fa-f]{4})*$', order.strip()):
+                _, rc = self._bios_run(['efibootmgr', '-o', order.strip()])
+                self.root.after(0, lambda: (
+                    self._bios_log_msg(f"{'✅' if rc==0 else '❌'} Reihenfolge: {order}"),
+                    self._bios_refresh_info()))
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_toggle_entry(self):
-        sel = self._bios_tree.selection()
-        if not sel:
-            return
-        bid   = sel[0]
-        vals  = self._bios_tree.item(bid, "values")
-        name  = vals[2]
-        aktiv = vals[0] == "✅"
-        flag  = '-A' if aktiv else '-a'
-        aktion = "deaktivieren" if aktiv else "aktivieren"
-        if not messagebox.askyesno("Ein-/Ausschalten",
-            f"Boot{bid} ({name}) {aktion}?"):
-            return
         def worker():
-            _, rc = self._bios_run(['efibootmgr', '-b', bid, flag])
-            self.root.after(0, lambda: (
-                self._bios_log_msg(
-                    f"{'✅' if rc==0 else '❌'} Boot{bid} {aktion if rc!=0 else (aktion+'t')}"),
-                self._bios_refresh_info()))
+            out, _ = self._bios_run(['efibootmgr'])
+            tid = simpledialog.askstring("Ein-/Ausschalten",
+                "Boot-ID eingeben:", parent=self.root)
+            if not tid or not re.match(r'^[0-9A-Fa-f]{4}$', tid.strip()):
+                return
+            tid    = tid.strip().upper()
+            active = any(f'Boot{tid}*' in l for l in out.splitlines())
+            flag   = '-A' if active else '-a'
+            action = "deaktivieren" if active else "aktivieren"
+            if messagebox.askyesno(action.title(), f"Boot{tid} {action}?"):
+                _, rc = self._bios_run(['efibootmgr', '-b', tid, flag])
+                self.root.after(0, lambda: (
+                    self._bios_log_msg(f"{'✅' if rc==0 else '❌'} Boot{tid} {action}t"),
+                    self._bios_refresh_info()))
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_backup(self):
@@ -2810,6 +2654,7 @@ class AboutTab(GuiBase):
             "⚙️  System             –  Pflege, Optimierer, Boot-Check, BIOS/EFI, Einmal-Starter",
             "🐧  Eggs-ISO           –  Live-ISO erstellen (Programme/Design/Vollklon), Calamares",
             "🔧  GRUB               –  Boot-Einstellungen, Themes, Backup, System-Analyse (GRUB CC v2.1.1)",
+            "🩺  Laufwerk-Diagnose  –  S.M.A.R.T. + Badblocks Oberflächenscan, Log ~/DriveTests/",
             "🩺  Laufwerk-Diagnose  –  S.M.A.R.T. + Badblocks Oberflächenscan, Log ~/DriveTests/",
             "🌐  Netzwerk           –  Interfaces, Ping, Verbindungen (sortierbar+kopierbar), WLAN-Keys",
             "📋  Logs & Diagnose   –  Viewer mit Farbmarkierung + Suche, HTML-Systembericht",

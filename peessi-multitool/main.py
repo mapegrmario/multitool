@@ -110,6 +110,40 @@ except ImportError as e:
 # ══════════════════════════════════════════════════════════════════════════════
 #  HAUPT-APP
 # ══════════════════════════════════════════════════════════════════════════════
+# ─── CB-3: Logging mit Rotation ────────────────────────────────────────────
+import logging as _logging
+from logging.handlers import RotatingFileHandler as _RotHandler
+
+def _setup_logging():
+    """Richtet Logging mit automatischer Rotation ein (max 1 MB, 3 Backups)."""
+    try:
+        import pathlib as _pl
+        import os as _os
+        log_user = _os.environ.get("SUDO_USER") or _os.environ.get("USER") or "root"
+        log_home = _pl.Path(f"/home/{log_user}")
+        log_file = log_home / "peessi_multitool_fehler.log"
+        handler  = _RotHandler(str(log_file), maxBytes=1_000_000, backupCount=3)
+        handler.setLevel(_logging.WARNING)
+        fmt = _logging.Formatter(
+            "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S")
+        handler.setFormatter(fmt)
+        root_log = _logging.getLogger()
+        root_log.setLevel(_logging.WARNING)
+        root_log.addHandler(handler)
+        # Auch stdout für DEBUG wenn PEESSI_DEBUG gesetzt
+        import sys as _sys
+        if _os.environ.get("PEESSI_DEBUG"):
+            sh = _logging.StreamHandler(_sys.stdout)
+            sh.setLevel(_logging.DEBUG)
+            root_log.addHandler(sh)
+            root_log.setLevel(_logging.DEBUG)
+    except Exception:
+        pass  # Logging-Setup darf nie das Programm blockieren
+
+_setup_logging()
+_log = _logging.getLogger("peessi-multitool")
+
 class App:
     def __init__(self):
         self.settings = load_settings()
@@ -284,10 +318,65 @@ class App:
 
     # ── Programmstart ─────────────────────────────────────────────────────────
     def run(self):
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.mainloop()
+
+    def _on_close(self):
+        """HP-1: Alle laufenden Prozesse sauber beenden bevor das Fenster schließt."""
+        import threading as _th
+        # Alle Tabs nach laufenden Prozessen abfragen
+        procs = []
+        for attr in ("drives_tab", "system_tab", "advanced_tab"):
+            tab = getattr(self, attr, None)
+            if tab is None:
+                continue
+            for pattr in ("_proc", "_mig_proc", "_eggs_proc"):
+                proc = getattr(tab, pattr, None)
+                if proc is not None:
+                    procs.append((pattr, proc))
+            # DriveHealthTab
+            health = getattr(tab, "_health_tab", None)
+            if health:
+                proc = getattr(health, "_proc", None)
+                if proc:
+                    procs.append(("health._proc", proc))
+
+        if procs:
+            from tkinter import messagebox as _mb
+            names = ", ".join(p[0] for p in procs)
+            if not _mb.askyesno("Prozesse laufen noch",
+                f"Folgende Prozesse laufen noch:\n{names}\n\n"
+                "Wirklich beenden und alle Prozesse stoppen?"):
+                return
+            for name, proc in procs:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+
+        self.root.destroy()
 
 
 # ── Einstieg ──────────────────────────────────────────────────────────────────
+def _global_exception_handler(exc_type, exc_val, exc_tb):
+    """HP-3: Alle unbehandelten Exceptions loggen statt nur crashen."""
+    import traceback as _tb
+    _log.critical("Unbehandelte Exception:\n%s",
+                  "".join(_tb.format_exception(exc_type, exc_val, exc_tb)))
+    # Original-Handler aufrufen (zeigt Dialog)
+    import tkinter as _tk
+    try:
+        _tk.Tk().withdraw()
+        from tkinter import messagebox as _mb
+        _mb.showerror("Unerwarteter Fehler",
+            f"Ein unerwarteter Fehler ist aufgetreten:\n\n{exc_val}\n\n"
+            f"Details in: ~/peessi_multitool_fehler.log")
+    except Exception:
+        pass
+
+import sys as _sys
+_sys.excepthook = _global_exception_handler
+
 if __name__ == "__main__":
     app = App()
     app.run()

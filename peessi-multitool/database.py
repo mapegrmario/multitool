@@ -18,6 +18,7 @@ class SmartDatabase:
     def _init_db(self):
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")  # HP-2
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS smart_history (
                         id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,6 +37,7 @@ class SmartDatabase:
         ts = datetime.datetime.now().isoformat()
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")  # HP-2
                 for attr, vals in attributes.items():
                     conn.execute(
                         "INSERT INTO smart_history "
@@ -51,6 +53,7 @@ class SmartDatabase:
         since = (datetime.datetime.now() - datetime.timedelta(days=days)).isoformat()
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")  # HP-2
                 rows = conn.execute(
                     "SELECT timestamp, raw_value FROM smart_history "
                     "WHERE device=? AND attribute=? AND timestamp>? ORDER BY timestamp",
@@ -63,6 +66,7 @@ class SmartDatabase:
     def get_devices(self) -> list:
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")  # HP-2
                 rows = conn.execute(
                     "SELECT DISTINCT device FROM smart_history ORDER BY device"
                 ).fetchall()
@@ -73,6 +77,7 @@ class SmartDatabase:
     def get_attributes(self, device: str) -> list:
         try:
             with sqlite3.connect(self.db_path) as conn:
+                conn.execute("PRAGMA journal_mode=WAL")  # HP-2
                 rows = conn.execute(
                     "SELECT DISTINCT attribute FROM smart_history WHERE device=?",
                     (device,)

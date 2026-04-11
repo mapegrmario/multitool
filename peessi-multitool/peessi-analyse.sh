@@ -81,17 +81,17 @@ HEAD "2  PYTHON-DATEIEN: ZEILEN, MD5, SYNTAX"
 
 declare -A REF_LINES=(
     ["main.py"]=293         ["config.py"]=99        ["models.py"]=217
-    ["database.py"]=82      ["security.py"]=58       ["smart_engine.py"]=160
+    ["database.py"]=87      ["security.py"]=58       ["smart_engine.py"]=160
     ["wipe_engine.py"]=171  ["recovery_engine.py"]=202
-    ["gui_base.py"]=273     ["gui_drives.py"]=1792   ["gui_system.py"]=2673
+    ["gui_base.py"]=270     ["gui_drives.py"]=1792   ["gui_system.py"]=2673
 )
 declare -A REF_MD5=(
     ["main.py"]="36e6f634eb4c"      ["config.py"]="d65bf2cb34ea"
-    ["models.py"]="ddd148b977ff"    ["database.py"]="244f2dd750f1"
+    ["models.py"]="ddd148b977ff"    ["database.py"]="b2a09db49aa8"
     ["security.py"]="06c95a93c131"  ["smart_engine.py"]="a497e9f96f2d"
     ["wipe_engine.py"]="b91b8acb324b" ["recovery_engine.py"]="f07773856c2a"
-    ["gui_base.py"]="51e992dc2a12"  ["gui_drives.py"]="2dae243f994d"
-    ["gui_system.py"]="e21e1924f3e1"
+    ["gui_base.py"]="ad07e3bfbdef"  ["gui_drives.py"]="2dae243f994d"
+    ["gui_system.py"]="27133a6f32b4"
 )
 
 printf "  %-22s %7s %7s  %-14s  %s\n" "Datei" "Ref-Z" "Ist-Z" "MD5(12)" "Status"
