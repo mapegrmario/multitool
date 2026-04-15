@@ -80,18 +80,18 @@ HEAD "2  PYTHON-DATEIEN: ZEILEN, MD5, SYNTAX"
 # ══════════════════════════════════════════════════════════════════════════════
 
 declare -A REF_LINES=(
-    ["main.py"]=293         ["config.py"]=99        ["models.py"]=217
+    ["main.py"]=382         ["config.py"]=99        ["models.py"]=217
     ["database.py"]=87      ["security.py"]=58       ["smart_engine.py"]=160
     ["wipe_engine.py"]=171  ["recovery_engine.py"]=202
-    ["gui_base.py"]=270     ["gui_drives.py"]=1792   ["gui_system.py"]=2673
+    ["gui_base.py"]=270     ["gui_drives.py"]=1795   ["gui_system.py"]=2889
 )
 declare -A REF_MD5=(
-    ["main.py"]="36e6f634eb4c"      ["config.py"]="d65bf2cb34ea"
+    ["main.py"]="bc2facfe7c0f"      ["config.py"]="d65bf2cb34ea"
     ["models.py"]="ddd148b977ff"    ["database.py"]="b2a09db49aa8"
     ["security.py"]="06c95a93c131"  ["smart_engine.py"]="a497e9f96f2d"
     ["wipe_engine.py"]="b91b8acb324b" ["recovery_engine.py"]="f07773856c2a"
-    ["gui_base.py"]="ad07e3bfbdef"  ["gui_drives.py"]="2dae243f994d"
-    ["gui_system.py"]="27133a6f32b4"
+    ["gui_base.py"]="ad07e3bfbdef"  ["gui_drives.py"]="6fcf2e5786b7"
+    ["gui_system.py"]="c707a5291310"
 )
 
 printf "  %-22s %7s %7s  %-14s  %s\n" "Datei" "Ref-Z" "Ist-Z" "MD5(12)" "Status"
@@ -129,7 +129,7 @@ done
 
 echo ""
 INFO "Extra-Dateien:"
-declare -A EXTRA_MIN=( ["gui_grub.py"]=5000 ["gui_drive_health.py"]=5000 ["gui_advanced.py"]=45389
+declare -A EXTRA_MIN=( ["gui_grub.py"]=5000 ["gui_drive_health.py"]=5000 ["i18n.py"]=5000 ["gui_advanced.py"]=45389
     ["optimizer.sh"]=500 ["eggs-iso-tool.sh"]=1000 ["drive-health-tool.sh"]=1000 )
 for fn in "${!EXTRA_MIN[@]}"; do
     fp="${INSTALL_DIR}/${fn}"

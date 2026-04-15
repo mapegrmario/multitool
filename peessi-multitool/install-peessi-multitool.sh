@@ -73,13 +73,6 @@ if [[ $EUID -ne 0 ]]; then
 fi
 success "Root-Rechte vorhanden."
 
-# HP-6: Laufendes Programm erkennen → sicherer Update
-#if pgrep -f "peessi-multitool" &>/dev/null || pgrep -f "main.py.*peessi" &>/dev/null; then
-#    error "Peeßi's System Multitool läuft gerade noch!"
-#   error "Bitte das Programm schließen, dann erneut installieren."
-#   exit 1
-#fi
-
 # ── Ursprünglichen Benutzer ermitteln ─────────────────────────────────────────
 ORIG_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$USER")}"
 ORIG_HOME=$(eval echo "~${ORIG_USER}")
@@ -263,6 +256,7 @@ PY_FILES=(
     "smart_engine.py" "wipe_engine.py" "recovery_engine.py"
     "gui_base.py" "gui_drives.py" "gui_system.py"
     "gui_grub.py" "gui_drive_health.py" "gui_advanced.py"
+    "i18n.py"
 )
 for f in "${PY_FILES[@]}"; do
     if [[ -f "${SCRIPT_DIR}/${f}" ]]; then

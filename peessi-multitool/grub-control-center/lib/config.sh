@@ -15,7 +15,7 @@ readonly GRUB_FILE="/etc/default/grub"
 readonly LOG_DIR="/var/log/grub-control-center"
 
 # Bestimme aktuellen Benutzer
-CURRENT_USER="${SUDO_USER:-${USER:-root}}"
+CURRENT_USER="${SUDO_USER:-${USER:-$(logname 2>/dev/null || echo root)}}"
 if [ "$CURRENT_USER" = "root" ]; then
     # Versuche den originalen Benutzer zu finden
     if [ -n "$SUDO_USER" ]; then

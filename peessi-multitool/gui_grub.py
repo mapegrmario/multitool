@@ -189,22 +189,7 @@ class GrubTab:
         ttk.Button(btn_row, text="🔍 System analysieren",
                    command=self._run_check).pack(side="left")
 
-        # ── Vollprogramm starten ───────────────────────────────────────────
-        full_f = ttk.LabelFrame(inner,
-            text=" 🖥️ Vollprogramm (GRUB Control Center) ", padding=8)
-        full_f.pack(fill="x", pady=(0, 8))
-        tk.Label(full_f, text=(
-            "Startet GRUB Control Center v2.1.1 mit vollständiger GUI (zenity).\n"
-            "Enthält Recovery-System, Theme-Download, Backup-Verwaltung u.v.m."
-        ), bg=T["bg"], fg=T["fg_dim"], font=("Arial", 9)).pack(anchor="w")
-        btn2 = tk.Frame(full_f, bg=T["bg"])
-        btn2.pack(fill="x", pady=(8, 0))
-        ttk.Button(btn2, text="🚀 Vollprogramm starten",
-                   style="Accent.TButton",
-                   command=self._start_full).pack(side="left", padx=(0, 6))
-        ttk.Button(btn2, text="🔍 Nur System-Analyse",
-                   command=self._run_check).pack(side="left")
-
+        
         # ── Ausgabe-Log ────────────────────────────────────────────────────
         log_f = ttk.LabelFrame(inner, text=" Ausgabe ", padding=6)
         log_f.pack(fill="both", expand=True)

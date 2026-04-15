@@ -419,7 +419,6 @@ class SystemTab(GuiBase):
         nb.pack(fill='both', expand=True, padx=4, pady=4)
 
         self._build_cleanup(nb)
-        self._build_optimizer(nb)
         self._build_boot(nb)
         self._build_bios(nb)
         self._build_update_shutdown(nb)
@@ -429,42 +428,68 @@ class SystemTab(GuiBase):
 
     # ── Systempflege ──────────────────────────────────────────────────────────
     def _build_cleanup(self, nb):
-        self.make_shell_tab(nb,
-            "🧹 Systempflege",
-            "Aktualisiert Pakete, räumt auf (autoremove, clean), bereinigt Flatpak,\n"
-            "Journal (7 Tage), Thumbnail-Cache.  ⚠️ Benötigt Root.",
-            "Systempflege starten",
-            ("bash -c 'echo \"=== Pakete ===\"; "
-             "(command -v nala >/dev/null 2>&1 && nala update && nala upgrade -y "
-             "&& nala autoremove -y && nala clean) "
-             "|| (apt update && apt upgrade -y && apt autoremove -y && apt clean); "
-             "echo; echo \"=== Flatpak ===\"; "
-             "command -v flatpak >/dev/null 2>&1 && flatpak uninstall --unused -y "
-             "|| echo \"Flatpak n.v.\"; "
-             "echo; echo \"=== Journal ===\"; journalctl --vacuum-time=7d; "
-             "echo; echo \"=== Thumbnails ===\"; "
-             f"rm -rf -- {shlex_quote(str(USER_HOME / '.cache' / 'thumbnails'))}/*; "
-             "echo; echo \"=== Speicher ===\"; df -h /; echo; echo \"✅ Fertig.\"'")
+        import os as _os_cl
+        T   = self.theme
+        _, pane = self.make_scrollable_tab(nb, "🧹 Systempflege")
+        pane.configure(padx=12, pady=10)
+
+        # ── Systempflege ──────────────────────────────────────────────────
+        sf = ttk.LabelFrame(pane, text=" 🧹 Systempflege ", padding=8)
+        sf.pack(fill="x", pady=(0, 10))
+        tk.Label(sf,
+            text=("Aktualisiert Pakete, räumt auf (autoremove, clean), bereinigt Flatpak,\n"
+                  "Journal (7 Tage), Thumbnail-Cache.  ⚠️ Benötigt Root."),
+            bg=T["bg"], fg=T["fg_dim"], font=("Arial", 9)).pack(anchor="w")
+        _th = shlex_quote(str(USER_HOME / '.cache' / 'thumbnails'))
+        cleanup_cmd = (
+            f"bash -c "
+            f"'echo == Pakete ==; "
+            f"(command -v nala >/dev/null 2>&1 && nala update && nala upgrade -y "
+            f"&& nala autoremove -y && nala clean) "
+            f"|| (apt update && apt upgrade -y && apt autoremove -y && apt clean); "
+            f"echo; echo == Flatpak ==; "
+            f"command -v flatpak >/dev/null 2>&1 && flatpak uninstall --unused -y "
+            f"|| echo Flatpak nicht vorhanden; "
+            f"echo; echo == Journal ==; journalctl --vacuum-time=7d; "
+            f"echo; echo == Thumbnails ==; rm -rf -- {{{_th}}}/*; "
+            f"echo; echo == Speicher ==; df -h /; echo; echo Fertig.'"
         )
 
-    # ── Optimierer ───────────────────────────────────────────────────────────
-    def _build_optimizer(self, nb):
-        import os as _os
-        T    = self.theme
-        INSTALL_DIR = _os.path.dirname(_os.path.abspath(__file__))
-        script = _os.path.join(INSTALL_DIR, "optimizer.sh")
-        # Fallback: Script direkt nach /tmp schreiben wenn nicht vorhanden
-        if not _os.path.isfile(script):
-            script = "/tmp/peessi_optimizer.sh"
-        cmd = f"bash '{script}'"
-        self.make_shell_tab(nb,
-            "⚡ Optimierer",
-            "Kernel-Tuning (BBR falls verfügbar, Swappiness), dynamische Swap-Datei,\n"
-            "Firefox Low-Memory-Policies (nur wenn Firefox installiert).\n"
-            "Funktioniert auf allen Debian/Ubuntu/Mint-Systemen.  ⚠️ Benötigt Root. Neustart empfohlen.",
-            "Optimieren",
-            cmd
-        )
+        # ── Optimierer ────────────────────────────────────────────────────
+        of = ttk.LabelFrame(pane, text=" ⚡ Optimierer ", padding=8)
+        of.pack(fill="x", pady=(0, 10))
+        tk.Label(of,
+            text=("Kernel-Tuning (BBR falls verfügbar, Swappiness), dynamische Swap-Datei,\n"
+                  "Firefox Low-Memory-Policies (nur wenn Firefox installiert).\n"
+                  "Funktioniert auf allen Debian/Ubuntu/Mint-Systemen.  ⚠️ Benötigt Root. Neustart empfohlen."),
+            bg=T["bg"], fg=T["fg_dim"], font=("Arial", 9)).pack(anchor="w")
+        _script = _os_cl.path.join(_os_cl.path.dirname(_os_cl.path.abspath(__file__)), "optimizer.sh")
+        if not _os_cl.path.isfile(_script):
+            _script = "/tmp/peessi_optimizer.sh"
+        opt_cmd = f"bash \'{_script}\'"
+
+        # Gemeinsames Log für beide Aktionen
+        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f.pack(fill="both", expand=True)
+        log_w = self.make_log_widget(log_f, height=18)
+        log_w.pack(fill="both", expand=True)
+
+        # Buttons
+        btn_f = tk.Frame(pane, bg=T["bg"]); btn_f.pack(fill="x", pady=(8, 0))
+        ttk.Button(btn_f, text="🧹 Systempflege starten",
+                   style="Accent.TButton",
+                   command=lambda: self.run_shell_async(cleanup_cmd, log_w)
+                   ).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_f, text="⚡ Optimieren",
+                   style="Accent.TButton",
+                   command=lambda: self.run_shell_async(opt_cmd, log_w)
+                   ).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_f, text="🗑 Leeren",
+                   command=lambda: self.clear_log(log_w)).pack(side="left", padx=(0,4))
+        ttk.Button(btn_f, text="📋 Kopieren",
+                   command=lambda: self.copy_log(log_w)).pack(side="left")
+
+
     # ── Prozesse ─────────────────────────────────────────────────────────────
     def _build_boot(self, nb):
         T   = self.theme
@@ -563,34 +588,119 @@ class SystemTab(GuiBase):
     # ── BIOS/EFI ─────────────────────────────────────────────────────────────
     def _build_bios(self, nb):
         T   = self.theme
-        tab = ttk.Frame(nb)
-        nb.add(tab, text="⚙️ BIOS/EFI")
-        pane = tk.Frame(tab, bg=T["bg"])
-        pane.pack(fill='both', expand=True, padx=12, pady=10)
+        _, pane = self.make_scrollable_tab(nb, "⚙️ BIOS/EFI")
+        pane.configure(padx=12, pady=10)
 
-        btn_grid = tk.Frame(pane, bg=T["bg"])
-        btn_grid.pack(fill='x', pady=(0, 8))
-        actions = [
-            ("🖫 USB-Boot forcieren",     self._bios_usb_boot),
-            ("🔧 Ins BIOS neu starten",   self._bios_reboot_bios),
-            ("🧹 Boot-Menü aufräumen",     self._bios_cleanup),
-            ("🗑 Eintrag löschen",         self._bios_delete_single),
-            ("⏱ Timeout einstellen",       self._bios_timeout),
-            ("↕ Boot-Reihenfolge",         self._bios_bootorder),
-            ("✔ Ein-/Ausschalten",         self._bios_toggle_entry),
-            ("💾 EFI-Backup",              self._bios_backup),
-            ("♻ Backup wiederherstellen",  self._bios_restore),
-            ("🔄 Aktualisieren",           self._bios_refresh_info),
-        ]
-        for i, (label, cmd) in enumerate(actions):
-            ttk.Button(btn_grid, text=label, command=cmd).grid(
-                row=i // 5, column=i % 5, padx=4, pady=3, sticky='ew')
-            btn_grid.columnconfigure(i % 5, weight=1)
+        # ── Boot-Einträge ──────────────────────────────────────────────────
+        ov_f = ttk.LabelFrame(pane, text=" Boot-Einträge (efibootmgr) ", padding=6)
+        ov_f.pack(fill="x", pady=(0, 8))
 
-        log_f = ttk.LabelFrame(pane, text=" efibootmgr Ausgabe ", padding=8)
-        log_f.pack(fill='both', expand=True)
-        self.bios_log = self.make_log_widget(log_f, height=22)
-        self.bios_log.pack(fill='both', expand=True)
+        # Treeview: übersichtliche Tabelle statt Rohtextausgabe
+        cols = ("Aktiv", "ID", "Name")
+        self._bios_tree = ttk.Treeview(ov_f, columns=cols, show="headings", height=7)
+        self._bios_tree.heading("Aktiv", text="✅")
+        self._bios_tree.heading("ID",    text="Boot-ID")
+        self._bios_tree.heading("Name",  text="Bezeichnung")
+        self._bios_tree.column("Aktiv", width=40,  anchor="center")
+        self._bios_tree.column("ID",    width=80,  anchor="center")
+        self._bios_tree.column("Name",  width=400, anchor="w")
+        self._bios_tree.tag_configure("active",   foreground=T["success"])
+        self._bios_tree.tag_configure("inactive", foreground=T["fg_dim"])
+        tree_sb = ttk.Scrollbar(ov_f, orient="vertical",
+                                command=self._bios_tree.yview)
+        self._bios_tree.configure(yscrollcommand=tree_sb.set)
+        self._bios_tree.pack(side="left", fill="both", expand=True)
+        tree_sb.pack(side="right", fill="y")
+        self._bios_tree.bind("<<TreeviewSelect>>", self._bios_on_select)
+
+        # Status-Zeile (Reihenfolge + Timeout)
+        self._bios_info_lbl = tk.Label(ov_f, text="", bg=T["bg"],
+                                        fg=T["fg_dim"], font=("Monospace", 9))
+        self._bios_info_lbl.pack(anchor="w", pady=(4, 0))
+
+        # ── Schnell-Aktionen (immer sichtbar) ─────────────────────────────
+        qa_f = tk.Frame(pane, bg=T["bg"])
+        qa_f.pack(fill="x", pady=(0, 8))
+        ttk.Button(qa_f, text="🔄 Aktualisieren",
+                   command=self._bios_refresh_info).pack(side="left", padx=(0,6))
+        ttk.Button(qa_f, text="🔧 Ins BIOS neu starten",
+                   command=self._bios_reboot_bios).pack(side="left", padx=(0,6))
+        ttk.Button(qa_f, text="💾 Backup",
+                   command=self._bios_backup).pack(side="left", padx=(0,6))
+        ttk.Button(qa_f, text="♻ Backup wiederherstellen",
+                   command=self._bios_restore).pack(side="left")
+
+        # ── Ausgewählten Eintrag bearbeiten ───────────────────────────────
+        sel_f = ttk.LabelFrame(pane, text=" Ausgewählten Eintrag bearbeiten ", padding=8)
+        sel_f.pack(fill="x", pady=(0, 8))
+
+        self._bios_sel_lbl = tk.Label(sel_f,
+                                       text="→ Eintrag in der Tabelle anklicken",
+                                       bg=T["bg"], fg=T["fg_dim"],
+                                       font=("Arial", 9, "italic"))
+        self._bios_sel_lbl.pack(anchor="w", pady=(0, 6))
+
+        sel_row = tk.Frame(sel_f, bg=T["bg"]); sel_row.pack(fill="x")
+        self._bios_del_btn = ttk.Button(sel_row, text="🗑 Löschen",
+                                         style="Danger.TButton",
+                                         command=self._bios_delete_single,
+                                         state="disabled")
+        self._bios_del_btn.pack(side="left", padx=(0, 6))
+        self._bios_toggle_btn = ttk.Button(sel_row, text="✔ Aktivieren / Deaktivieren",
+                                            command=self._bios_toggle_entry,
+                                            state="disabled")
+        self._bios_toggle_btn.pack(side="left", padx=(0, 6))
+        self._bios_usb_btn = ttk.Button(sel_row,
+                                         text="🖫 Als nächsten Boot setzen + Neustart",
+                                         command=self._bios_usb_boot_selected,
+                                         state="disabled")
+        self._bios_usb_btn.pack(side="left")
+
+        # ── Einstellungen (Timeout + Reihenfolge inline) ──────────────────
+        cfg_f = ttk.LabelFrame(pane, text=" Einstellungen ", padding=8)
+        cfg_f.pack(fill="x", pady=(0, 8))
+
+        # Timeout
+        row1 = tk.Frame(cfg_f, bg=T["bg"]); row1.pack(fill="x", pady=2)
+        tk.Label(row1, text="Timeout (Sek.):", bg=T["bg"], fg=T["fg"],
+                 font=("Arial", 9), width=18, anchor="w").pack(side="left")
+        self._bios_timeout_var = tk.StringVar(value="5")
+        ttk.Spinbox(row1, from_=0, to=60, width=6,
+                    textvariable=self._bios_timeout_var).pack(side="left", padx=(0, 8))
+        ttk.Button(row1, text="✔ Setzen",
+                   command=self._bios_timeout).pack(side="left")
+
+        # Boot-Reihenfolge
+        row2 = tk.Frame(cfg_f, bg=T["bg"]); row2.pack(fill="x", pady=2)
+        tk.Label(row2, text="Boot-Reihenfolge:", bg=T["bg"], fg=T["fg"],
+                 font=("Arial", 9), width=18, anchor="w").pack(side="left")
+        self._bios_order_var = tk.StringVar()
+        ttk.Entry(row2, textvariable=self._bios_order_var,
+                  width=28).pack(side="left", padx=(0, 8))
+        ttk.Button(row2, text="✔ Setzen",
+                   command=self._bios_bootorder).pack(side="left")
+        tk.Label(row2, text="z.B. 0001,0000,0003",
+                 bg=T["bg"], fg=T["fg_dim"],
+                 font=("Arial", 8)).pack(side="left", padx=6)
+
+        # Aufräumen
+        row3 = tk.Frame(cfg_f, bg=T["bg"]); row3.pack(fill="x", pady=2)
+        tk.Label(row3, text="Boot-Menü aufräumen:", bg=T["bg"], fg=T["fg"],
+                 font=("Arial", 9), width=18, anchor="w").pack(side="left")
+        ttk.Button(row3, text="🧹 Veraltete Einträge löschen",
+                   command=self._bios_cleanup).pack(side="left")
+
+        # ── Kompaktes Log ─────────────────────────────────────────────────
+        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f.pack(fill="both", expand=True)
+        self.bios_log = self.make_log_widget(log_f, height=6)
+        self.bios_log.pack(fill="both", expand=True)
+        lbf = tk.Frame(pane, bg=T["bg"]); lbf.pack(fill="x", pady=(4,0))
+        ttk.Button(lbf, text="🗑 Leeren",
+                   command=lambda: self.clear_log(self.bios_log)).pack(side="left")
+        ttk.Button(lbf, text="📋 Kopieren",
+                   command=lambda: self.copy_log(self.bios_log)).pack(side="left", padx=6)
+
         self._bios_refresh_info()
 
     def _bios_run(self, cmd: list):
@@ -604,12 +714,59 @@ class SystemTab(GuiBase):
         self.log_to(self.bios_log, msg + "\n")
 
     def _bios_refresh_info(self):
-        self.clear_log(self.bios_log)
         def worker():
             out, rc = self._bios_run(['efibootmgr', '-v'])
-            self.root.after(0, lambda: self._bios_log_msg(
-                out if rc == 0 else f"Fehler: {out}"))
+            if rc != 0:
+                self.root.after(0, lambda: self._bios_log_msg(f"Fehler: {out}"))
+                return
+            entries, boot_order, timeout_val = [], "", ""
+            for line in out.splitlines():
+                if line.startswith("BootOrder:"):
+                    boot_order = line.split(":",1)[1].strip()
+                elif line.startswith("Timeout:"):
+                    m = re.search(r"\d+", line)
+                    timeout_val = m.group() if m else ""
+                m = re.match(r'Boot([0-9A-Fa-f]{4})(\*?) (.+)', line)
+                if m:
+                    bid   = m.group(1)
+                    aktiv = "✅" if m.group(2) == "*" else "⬜"
+                    name  = re.split(r'\t|File\(|HD\(', m.group(3))[0].strip()
+                    tag   = "active" if m.group(2) == "*" else "inactive"
+                    entries.append((aktiv, bid, name, tag))
+            def update_ui():
+                for item in self._bios_tree.get_children():
+                    self._bios_tree.delete(item)
+                for aktiv, bid, name, tag in entries:
+                    self._bios_tree.insert("", "end",
+                        values=(aktiv, f"Boot{bid}", name),
+                        tags=(tag,), iid=bid)
+                if timeout_val and hasattr(self, "_bios_timeout_var"):
+                    self._bios_timeout_var.set(timeout_val)
+                if boot_order and hasattr(self, "_bios_order_var"):
+                    self._bios_order_var.set(boot_order)
+                info = f"Reihenfolge: {boot_order}   |   Timeout: {timeout_val}s   |   {len(entries)} Einträge"
+                if hasattr(self, "_bios_info_lbl"):
+                    self._bios_info_lbl.config(text=info)
+                self._bios_log_msg(f"✅ {len(entries)} Einträge geladen.")
+            self.root.after(0, update_ui)
         threading.Thread(target=worker, daemon=True).start()
+
+    def _bios_on_select(self, event=None):
+        sel = self._bios_tree.selection()
+        if sel:
+            vals = self._bios_tree.item(sel[0], "values")
+            aktiv, bid, name = vals
+            self._bios_sel_lbl.config(
+                text=f"Ausgewählt: {bid}  {aktiv}  {name}",
+                fg=self.theme["success"] if aktiv == "✅" else self.theme["fg_dim"])
+            for btn in (self._bios_del_btn, self._bios_toggle_btn, self._bios_usb_btn):
+                btn.config(state="normal")
+        else:
+            self._bios_sel_lbl.config(
+                text="→ Eintrag in der Tabelle anklicken",
+                fg=self.theme["fg_dim"])
+            for btn in (self._bios_del_btn, self._bios_toggle_btn, self._bios_usb_btn):
+                btn.config(state="disabled")
 
     def _bios_usb_boot(self):
         def worker():
@@ -632,6 +789,26 @@ class SystemTab(GuiBase):
                 if rc == 0:
                     self._bios_log_msg(f"✅ Boot{sel} gesetzt. Reboot...")
                     subprocess.Popen(['reboot'])
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _bios_usb_boot_selected(self):
+        """Setzt den ausgewählten Eintrag als einmaligen nächsten Boot + Reboot."""
+        sel = self._bios_tree.selection()
+        if not sel:
+            return
+        bid  = sel[0]
+        vals = self._bios_tree.item(bid, "values")
+        name = vals[2] if len(vals) > 2 else bid
+        if not messagebox.askyesno("Einmaligen Boot setzen",
+            f"Boot{bid} ({name}) fuer den naechsten Start setzen und sofort neu starten?"):
+            return
+        def worker():
+            _, rc = self._bios_run(["efibootmgr", "-n", bid])
+            if rc == 0:
+                self.root.after(0, lambda: self._bios_log_msg(f"OK Boot{bid} gesetzt"))
+                import subprocess as _sp2; _sp2.Popen(["reboot"])
+            else:
+                self.root.after(0, lambda: self._bios_log_msg(f"Fehler Boot{bid}"))
         threading.Thread(target=worker, daemon=True).start()
 
     def _bios_reboot_bios(self):
@@ -873,12 +1050,19 @@ sync; sleep 1; systemctl poweroff
             "Das System wird nach Updates HERUNTERGEFAHREN!\n\nWirklich jetzt?",
             icon='warning'):
             return
+        # Script muss als normaler User laufen, nicht als Root
+        real_user = ORIGINAL_USER  # aus config.py
         def worker():
-            proc = subprocess.Popen([script],
+            # sudo -u USER bash script – Script läuft mit User-Rechten
+            cmd = ["sudo", "-u", real_user, "bash", script]
+            proc = subprocess.Popen(cmd,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             for line in proc.stdout:
                 self.root.after(0, lambda l=line: self.log_to(self.upshut_log, l))
             proc.wait()
+            if proc.returncode != 0:
+                self.root.after(0, lambda: self.log_to(
+                    self.upshut_log, f"\n❌ Fehler (Exit: {proc.returncode})\n"))
         threading.Thread(target=worker, daemon=True).start()
 
     def _upshut_uninstall(self):
@@ -1400,7 +1584,6 @@ sync; sleep 1; systemctl poweroff
         self._eggs_mode_var = tk.StringVar(value="standard")
         for val, lbl in [
             ("standard", "🖥️  Nur Programme  –  System ohne persönliche Daten/Design"),
-            ("design",   "🎨  Programme & Design  –  inkl. Theme, Icons, Wallpaper"),
             ("klon",     "💾  Vollständiger Klon  –  komplettes 1:1-Abbild"),
         ]:
             ttk.Radiobutton(mode_f, text=lbl, value=val,
@@ -1467,7 +1650,7 @@ sync; sleep 1; systemctl poweroff
         clean     = self._eggs_clean_var.get()
         shutdown  = self._eggs_shutdown_iso_var.get()
 
-        mode_txt = {"standard":"Nur Programme","design":"Programme & Design","klon":"Vollklon"}
+        mode_txt = {"standard":"Nur Programme","klon":"Vollklon"}
         if not messagebox.askyesno("ISO erstellen",
             f"Modus    : {mode_txt.get(mode, mode)}\n"
             f"ISO-Name : {iso_nm}\nZiel     : {dest}\n"
@@ -2506,8 +2689,23 @@ class SettingsTab(GuiBase):
                 textvariable=self._set_log_var, width=6).pack(side='left'))
 
         tk.Frame(pane, bg=T["border"], height=1).pack(fill='x', pady=14)
+
+        # ── Sprache ────────────────────────────────────────────────────────────
+        lang_f = ttk.LabelFrame(pane, text=" 🌐 Sprache / Language ", padding=8)
+        lang_f.pack(fill='x', pady=(0, 12))
+        lang_row = tk.Frame(lang_f, bg=T["bg"]); lang_row.pack(fill='x')
+        tk.Label(lang_row, text="Sprache / Language:",
+                 bg=T["bg"], fg=T["fg"], font=('Arial', 10)).pack(side='left', padx=(0, 12))
+        self._lang_var = tk.StringVar(value=self.settings.get("language", "de"))
+        for code, label in [("de", "🇩🇪  Deutsch"), ("en", "🇬🇧  English")]:
+            ttk.Radiobutton(lang_row, text=label, variable=self._lang_var,
+                            value=code).pack(side='left', padx=8)
+        tk.Label(lang_f,
+                 text="Änderung wirksam nach Neustart.  / Effective after restart.",
+                 bg=T["bg"], fg=T["fg_dim"], font=('Arial', 8)).pack(anchor='w', pady=(4,0))
+
         btn_row = tk.Frame(pane, bg=T["bg"])
-        btn_row.pack(anchor='w')
+        btn_row.pack(anchor='w', pady=(0,8))
         ttk.Button(btn_row, text="💾 Einstellungen speichern",
                    style='Accent.TButton', command=self._save).pack(side='left', padx=(0, 8))
         ttk.Button(btn_row, text="↩️ Auf Standard zurücksetzen",
@@ -2516,6 +2714,7 @@ class SettingsTab(GuiBase):
     def _save(self):
         self.settings.update({
             "theme":               self._set_theme_var.get(),
+            "language":            self._lang_var.get(),
             "font_size":           self._set_font_var.get(),
             "ui_font_size":        self._set_ui_font_var.get(),
             "default_wipe_method": self._set_wipe_var.get(),
@@ -2637,7 +2836,9 @@ class AboutTab(GuiBase):
                  font=('Arial', 11), bg=T["bg"], fg=T["accent"],
                  cursor='hand2')
         email_lbl.pack(anchor='w')
-        email_lbl.bind("<Button-1>", lambda e: webbrowser.open("mailto:mapegr@mailbox.org"))
+        email_lbl.bind("<Button-1>", lambda e: subprocess.Popen(
+            ["sudo", "-u", ORIGINAL_USER, "xdg-open",
+             "mailto:mapegr@mailbox.org?subject=Multitool&body=Hallo%20ich%20benutze%20Multitool"]))
         tk.Label(info, text="Lizenz: GPLv3 / MIT  ·  Linux Mint / Debian / Ubuntu",
                  font=('Arial', 10), bg=T["bg"], fg=T["fg_dim"]).pack(anchor='w', pady=(4, 0))
 
@@ -2671,3 +2872,18 @@ class AboutTab(GuiBase):
             text="Module: config · models · database · security · smart_engine ·\n"
                  "        wipe_engine · recovery_engine · gui_base · gui_drives · gui_system",
             font=('Monospace', 9), bg=T["bg"], fg=T["fg_dim"], justify='left').pack(anchor='w')
+        _cleanup_parts = [
+            "bash -c '",
+            "echo === Pakete ===; ",
+            "(command -v nala >/dev/null 2>&1 ",
+            " && nala update && nala upgrade -y && nala autoremove -y && nala clean) ",
+            "|| (apt update && apt upgrade -y && apt autoremove -y && apt clean); ",
+            "echo; echo === Flatpak ===; ",
+            "command -v flatpak >/dev/null 2>&1 && flatpak uninstall --unused -y ",
+            "|| echo Flatpak nicht vorhanden; ",
+            "echo; echo === Journal ===; journalctl --vacuum-time=7d; ",
+            "echo; echo === Thumbnails ===; ",
+        ]
+        _thumb = shlex_quote(str(USER_HOME / '.cache' / 'thumbnails'))
+        cleanup_cmd = "".join(_cleanup_parts) + f"rm -rf -- {_thumb}/*; " + (
+            "echo; echo === Speicher ===; df -h /; echo; echo Fertig.'")

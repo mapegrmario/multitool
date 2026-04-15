@@ -243,14 +243,17 @@ class DrivesTabs(GuiBase):
         def _on_mousewheel_linux(e):
             canvas.yview_scroll(-1 if e.num == 4 else 1, 'units')
 
+        def _bind_rec(w):
+            w.bind('<MouseWheel>', _on_mousewheel,       add='+')
+            w.bind('<Button-4>',   _on_mousewheel_linux, add='+')
+            w.bind('<Button-5>',   _on_mousewheel_linux, add='+')
+            for child in w.winfo_children():
+                _bind_rec(child)
+
         pane.bind('<Configure>', _on_frame_configure)
         canvas.bind('<Configure>', _on_canvas_configure)
-        canvas.bind('<MouseWheel>', _on_mousewheel)
-        canvas.bind('<Button-4>', _on_mousewheel_linux)
-        canvas.bind('<Button-5>', _on_mousewheel_linux)
-        tab.bind('<MouseWheel>', _on_mousewheel)
-        tab.bind('<Button-4>', _on_mousewheel_linux)
-        tab.bind('<Button-5>', _on_mousewheel_linux)
+        _bind_rec(canvas)
+        pane.bind('<Configure>', lambda e: (_on_frame_configure(e), _bind_rec(canvas)), add='+')
 
         # Innenabstand
         pane_inner = tk.Frame(pane, bg=T["bg"])
