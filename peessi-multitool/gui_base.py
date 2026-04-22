@@ -91,16 +91,48 @@ class GuiBase:
         self.root.configure(bg=T["bg"])
 
     # ── Log-Hilfsmethoden (für alle Tabs) ────────────────────────────────────
-    def log_to(self, widget, text: str, clear: bool = False):
+    def log_to(self, widget, text: str, clear: bool = False, tag: str = ""):
+        """Schreibt Text ins Log-Widget. Tag wird automatisch erkannt wenn leer."""
         try:
             widget.config(state='normal')
             if clear:
                 widget.delete('1.0', tk.END)
-            widget.insert(tk.END, text)
+            if not tag:
+                tag = self._auto_log_tag(text)
+            if tag:
+                widget.insert(tk.END, text, tag)
+            else:
+                widget.insert(tk.END, text)
             widget.see(tk.END)
             widget.config(state='disabled')
         except Exception:
             pass
+
+    @staticmethod
+    def _auto_log_tag(text: str) -> str:
+        """Nr. 2: Erkennt automatisch den passenden Farb-Tag für eine Log-Zeile."""
+        t = text.strip()
+        # Explizite Emojis
+        if t.startswith(("✅", "✓", "OK", "Fertig", "Erfolgreich", "installed", "done")):
+            return "ok"
+        if t.startswith(("❌", "✗", "Fehler", "Error", "FEHLER", "ERROR", "failed", "Failed")):
+            return "err"
+        if t.startswith(("⚠️", "⚠", "Warnung", "Warning", "WARN")):
+            return "warn"
+        if t.startswith(("ℹ️", "ℹ", "INFO", "Info", "──", "===", "---")):
+            return "sep"
+        # Schlüsselwörter im Text
+        tl = t.lower()
+        if any(w in tl for w in ("error", "fehler", "failed", "not found", "nicht gefunden",
+                                  "keine", "exit: 1", "exit: 2")):
+            return "err"
+        if any(w in tl for w in ("warning", "warnung", "deprecated", "skip")):
+            return "warn"
+        if any(w in tl for w in ("✅", "ok", "success", "erfolgreich", "abgeschlossen")):
+            return "ok"
+        if t.startswith("─") or t.startswith("═") or t.startswith("$"):
+            return "sep"
+        return ""
 
     def clear_log(self, widget):
         try:
@@ -200,18 +232,28 @@ class GuiBase:
         w = scrolledtext.ScrolledText(parent, height=height, state='disabled',
                                        font=('Monospace', self.settings.get('font_size', 9)),
                                        bg=T["log_bg"], fg=T["log_fg"])
+        # Nr. 2: Farb-Tags für automatische Log-Einfärbung
+        w.tag_configure("ok",   foreground=T.get("success",   "#2ecc71"))
+        w.tag_configure("err",  foreground=T.get("danger",    "#e74c3c"))
+        w.tag_configure("warn", foreground=T.get("warning",   "#f39c12"))
+        w.tag_configure("info", foreground=T.get("accent",    "#3498db"))
+        w.tag_configure("sep",  foreground=T.get("fg_dim",    "#888888"))
         self._log_widgets.append(w)
         return w
 
     def run_shell_async(self, command: str, log_widget,
                         run_btn=None, done_cb=None):
         """Führt einen Shell-Befehl asynchron aus und streamt Ausgabe ins log_widget."""
-        import re as _re
+        import re as _re, time as _time
         self.clear_log(log_widget)
         if run_btn:
             run_btn.config(state='disabled')
+        # Nr. 6: Statusleiste aktualisieren
+        cmd_name = (command.split()[0] if isinstance(command, str) else str(command))
+        self._set_app_status(f"⏳ {cmd_name} läuft…", "busy")
 
         def worker():
+            t0 = _time.monotonic()
             try:
                 env = os.environ.copy()
                 env['TERM'] = 'xterm-256color'
@@ -224,10 +266,19 @@ class GuiBase:
                     clean = _re.sub(r'\x1B\[[0-?]*[ -/]*[@-~]', '', line)
                     self.root.after(0, lambda l=clean: self.log_to(log_widget, l))
                 proc.wait()
-                self.root.after(0, lambda: self.log_to(
-                    log_widget, f"\n─── Beendet (Exit: {proc.returncode}) ───\n"))
+                elapsed = _time.monotonic() - t0
+                rc = proc.returncode
+                # Nr. 7: Zeitanzeige am Ende
+                end_line = f"\n─── Beendet in {elapsed:.1f}s (Exit: {rc}) ───\n"
+                end_tag  = "ok" if rc == 0 else "err"
+                self.root.after(0, lambda: self.log_to(log_widget, end_line, tag=end_tag))
+                # Nr. 6: Statusleiste zurücksetzen
+                status = f"✅ Fertig ({elapsed:.1f}s)" if rc == 0 else f"❌ Fehler (Exit: {rc})"
+                self.root.after(0, lambda s=status, r=rc:
+                    self._set_app_status(s, "ok" if r == 0 else "err"))
             except Exception as e:
-                self.root.after(0, lambda: self.log_to(log_widget, f"\nFehler: {e}\n"))
+                self.root.after(0, lambda: self.log_to(log_widget, f"\n❌ Fehler: {e}\n", tag="err"))
+                self.root.after(0, lambda: self._set_app_status(f"❌ {e}", "err"))
             finally:
                 if run_btn:
                     self.root.after(0, lambda: run_btn.config(state='normal'))
@@ -235,6 +286,15 @@ class GuiBase:
                     self.root.after(0, done_cb)
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _set_app_status(self, text: str, mode: str = ""):
+        """Nr. 6: Schreibt in die Statusleiste der App."""
+        try:
+            app = self.app if hasattr(self, 'app') else self
+            if hasattr(app, 'set_status'):
+                app.set_status(text, mode)
+        except Exception:
+            pass
 
     def make_shell_tab(self, nb, title: str, description: str,
                        btn_label: str, command: str):

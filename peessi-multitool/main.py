@@ -219,9 +219,11 @@ class App:
         tk.Frame(self.root, bg=T["border"], height=1).pack(fill='x')
         sbar = tk.Frame(self.root, bg=T["bg2"], height=28)
         sbar.pack(fill='x')
-        self.status_var = tk.StringVar(value="Bereit.")
-        tk.Label(sbar, textvariable=self.status_var, font=('Arial', 9),
-                 bg=T["bg2"], fg=T["fg_dim"], anchor='w').pack(side='left', padx=12, pady=5)
+        self.status_var = tk.StringVar(value="✅ Bereit.")
+        self._status_lbl = tk.Label(sbar, textvariable=self.status_var,
+                 font=('Arial', 9), bg=T["bg2"], fg=T.get("fg_dim","#888"),
+                 anchor='w')
+        self._status_lbl.pack(side='left', padx=12, pady=5)
         ttk.Button(sbar, text="Beenden",
                    command=self.root.quit).pack(side='right', padx=8, pady=3)
 
@@ -229,6 +231,22 @@ class App:
         self.settings_tab.apply_theme()
 
     # ── Theme umschalten ──────────────────────────────────────────────────────
+    def set_status(self, text: str, mode: str = ""):
+        """Nr. 6: Aktualisiert die Statusleiste unten im Fenster."""
+        try:
+            T = self.theme
+            color_map = {
+                "ok":   T.get("success", "#2ecc71"),
+                "err":  T.get("danger",  "#e74c3c"),
+                "warn": T.get("warning", "#f39c12"),
+                "busy": T.get("accent",  "#3498db"),
+                "":     T.get("fg_dim",  "#888888"),
+            }
+            self.status_var.set(text)
+            self._status_lbl.config(fg=color_map.get(mode, color_map[""]))
+        except Exception:
+            pass
+
     def _toggle_theme(self):
         new = "dark" if self.settings["theme"] == "light" else "light"
         self.settings["theme"] = new
@@ -246,6 +264,12 @@ class App:
 
     # ── Startup-Prüfungen ─────────────────────────────────────────────────────
     def _startup_checks(self):
+        # Nr. 5: Willkommens-Dialog beim ersten Start
+        import pathlib as _pl
+        cfg_file = _pl.Path.home() / ".config" / "peessi-multitool" / "settings.json"
+        if not cfg_file.exists():
+            self.root.after(300, self._show_welcome)
+
         # Root-Prüfung
         if os.geteuid() != 0:
             messagebox.showerror("Root-Rechte fehlen",
@@ -320,6 +344,57 @@ class App:
     def run(self):
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.mainloop()
+
+    def _show_welcome(self):
+        """Nr. 5: Einmaliger Willkommens-Dialog beim ersten Start."""
+        import tkinter as _tk
+        win = _tk.Toplevel(self.root)
+        win.title("Willkommen! / Welcome!")
+        win.geometry("520x420")
+        win.resizable(False, False)
+        win.grab_set()
+        T = self.theme
+
+        win.configure(bg=T["bg"])
+        _tk.Label(win, text="👋  Willkommen bei",
+                  bg=T["bg"], fg=T["fg_dim"], font=('Arial', 11)).pack(pady=(24, 0))
+        _tk.Label(win, text="Peeßi's System Multitool v4.1",
+                  bg=T["bg"], fg=T["accent"], font=('Arial', 16, 'bold')).pack()
+        _tk.Label(win, text="Dein persönliches Linux-Werkzeug",
+                  bg=T["bg"], fg=T["fg_dim"], font=('Arial', 10)).pack(pady=(2, 20))
+
+        # Die 3 wichtigsten Einstiegspunkte
+        tips = [
+            ("🖥️", "Dashboard",      "Systemübersicht: CPU, RAM, Laufwerke auf einen Blick"),
+            ("💿", "Laufwerke",      "SMART-Check, Badblocks, ISO brennen, sicher löschen"),
+            ("⚙️", "System",         "Systempflege, Optimierer, Boot-Einstellungen, BIOS"),
+        ]
+        tip_f = _tk.Frame(win, bg=T.get("bg2", T["bg"]), bd=1, relief="flat")
+        tip_f.pack(fill="x", padx=28, pady=(0, 16))
+        for icon, tab, desc in tips:
+            row = _tk.Frame(tip_f, bg=T.get("bg2", T["bg"]))
+            row.pack(fill="x", padx=12, pady=6)
+            _tk.Label(row, text=icon, bg=T.get("bg2", T["bg"]),
+                      font=('Arial', 18)).pack(side="left", padx=(0, 10))
+            col = _tk.Frame(row, bg=T.get("bg2", T["bg"]))
+            col.pack(side="left", anchor="w")
+            _tk.Label(col, text=tab, bg=T.get("bg2", T["bg"]),
+                      fg=T["fg"], font=('Arial', 10, 'bold')).pack(anchor="w")
+            _tk.Label(col, text=desc, bg=T.get("bg2", T["bg"]),
+                      fg=T["fg_dim"], font=('Arial', 9)).pack(anchor="w")
+
+        _tk.Label(win,
+                  text=("\u26a0\ufe0f  Alle Operationen laufen als Root.\n"
+                        "Backups vor destruktiven Aktionen!"),
+                  bg=T["bg"], fg=T.get("warning", "#f39c12"),
+                  font=('Arial', 9)).pack(pady=(0, 16))
+
+        from tkinter import ttk as _ttk
+        _ttk.Button(win, text="Los geht's! →",
+                    style="Accent.TButton",
+                    command=win.destroy).pack(pady=(0, 20))
+        win.bind("<Return>", lambda e: win.destroy())
+        win.bind("<Escape>", lambda e: win.destroy())
 
     def _on_close(self):
         """HP-1: Alle laufenden Prozesse sauber beenden bevor das Fenster schließt."""
