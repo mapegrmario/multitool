@@ -58,6 +58,10 @@ import datetime
 import shutil
 import subprocess
 import tkinter as tk
+try:
+    from i18n import T as _T
+except ImportError:
+    def _T(key,**kw): return key
 from tkinter import ttk, messagebox
 
 # ── Früher Import-Check & Fehlerlog ──────────────────────────────────────────
@@ -219,7 +223,7 @@ class App:
         tk.Frame(self.root, bg=T["border"], height=1).pack(fill='x')
         sbar = tk.Frame(self.root, bg=T["bg2"], height=28)
         sbar.pack(fill='x')
-        self.status_var = tk.StringVar(value="✅ Bereit.")
+        self.status_var = tk.StringVar(value="✅ " + _T("lbl_status") + " OK")
         self._status_lbl = tk.Label(sbar, textvariable=self.status_var,
                  font=('Arial', 9), bg=T["bg2"], fg=T.get("fg_dim","#888"),
                  anchor='w')
@@ -358,7 +362,7 @@ class App:
         win.configure(bg=T["bg"])
         _tk.Label(win, text="👋  Willkommen bei",
                   bg=T["bg"], fg=T["fg_dim"], font=('Arial', 11)).pack(pady=(24, 0))
-        _tk.Label(win, text="Peeßi's System Multitool v4.1",
+        _tk.Label(win, text="Peeßi's System Multitool v4.2",
                   bg=T["bg"], fg=T["accent"], font=('Arial', 16, 'bold')).pack()
         _tk.Label(win, text="Dein persönliches Linux-Werkzeug",
                   bg=T["bg"], fg=T["fg_dim"], font=('Arial', 10)).pack(pady=(2, 20))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Peeßi's System Multitool v4.1
+Peeßi's System Multitool v4.2
 Modul: config.py  –  Konstanten, Themes, Einstellungen
 """
 
@@ -11,7 +11,7 @@ import getpass
 import pwd
 from pathlib import Path
 
-VERSION = "4.1"
+VERSION = "4.2"
 
 # ── Benutzer & Pfade ──────────────────────────────────────────────────────────
 def get_original_user() -> str:

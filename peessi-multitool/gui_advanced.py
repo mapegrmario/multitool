@@ -13,6 +13,10 @@ Basiert auf Partitionierer V5 (integriert und angepasst an Multitool-Stil).
 """
 
 import tkinter as tk
+try:
+    from i18n import T as _T
+except ImportError:
+    def _T(key,**kw): return key
 from tkinter import ttk, messagebox, filedialog, scrolledtext
 import subprocess, threading, os, shutil, re
 
@@ -156,7 +160,7 @@ class AdvancedTabs:
                     model = p[2].strip() if len(p) > 2 else ""
                     size  = p[1] if len(p) > 1 else ""
                     items.append(f"/dev/{p[0]}  [{size}  {model}]".strip())
-            cb["values"] = items or ["Kein Laufwerk erkannt"]
+            cb["values"] = items or [_T("dlg_no_device")]
             if items:
                 cb.current(0)
         except Exception:
@@ -237,14 +241,14 @@ class AdvancedTabs:
         self._img_restore_btn.pack(anchor="w", pady=4)
 
         # Log
-        lf = ttk.LabelFrame(p, text=" Ausgabe ", padding=4)
+        lf = ttk.LabelFrame(p, text=f" {_T('lbl_output')} ", padding=4)
         lf.pack(fill="both", expand=True)
         self._img_log = self._make_log(lf, height=10)
         self._img_log.pack(fill="both", expand=True)
         bf = tk.Frame(p, bg=T["bg"]); bf.pack(fill="x", pady=(4, 0))
-        ttk.Button(bf, text="🗑 Leeren",
+        ttk.Button(bf, text=_T("btn_clear"),
                    command=lambda: self._log_clear(self._img_log)).pack(side="left")
-        ttk.Button(bf, text="📋 Kopieren",
+        ttk.Button(bf, text=_T("btn_copy"),
                    command=lambda: self._log_copy(self._img_log)).pack(side="left", padx=6)
 
     def _img_dev(self, cb):
@@ -400,21 +404,21 @@ class AdvancedTabs:
                                           style="Accent.TButton",
                                           command=self._mig_start)
         self._mig_start_btn.pack(side="left", padx=(0, 6))
-        self._mig_stop_btn = ttk.Button(btn_row, text="⏹ Stopp",
+        self._mig_stop_btn = ttk.Button(btn_row, text=_T("btn_stop"),
                                          style="Danger.TButton",
                                          command=self._mig_stop,
                                          state="disabled")
         self._mig_stop_btn.pack(side="left")
         self._mig_proc = None
 
-        lf = ttk.LabelFrame(p, text=" Ausgabe ", padding=4)
+        lf = ttk.LabelFrame(p, text=f" {_T('lbl_output')} ", padding=4)
         lf.pack(fill="both", expand=True)
         self._mig_log = self._make_log(lf, height=16)
         self._mig_log.pack(fill="both", expand=True)
         bf = tk.Frame(p, bg=T["bg"]); bf.pack(fill="x", pady=(4, 0))
-        ttk.Button(bf, text="🗑 Leeren",
+        ttk.Button(bf, text=_T("btn_clear"),
                    command=lambda: self._log_clear(self._mig_log)).pack(side="left")
-        ttk.Button(bf, text="📋 Kopieren",
+        ttk.Button(bf, text=_T("btn_copy"),
                    command=lambda: self._log_copy(self._mig_log)).pack(side="left", padx=6)
 
     def _mig_start(self):
@@ -517,8 +521,8 @@ class AdvancedTabs:
                                      state="readonly", width=12)
         self._lvm_fs.set("ext4")
         self._lvm_fs.grid(row=4, column=1, sticky="w", pady=2)
-        ttk.Button(cf, text="▶ LVM erstellen",
-                   style="Accent.TButton",
+        ttk.Button(cf, text="⚠️ LVM erstellen",
+                   style="Danger.TButton",
                    command=self._lvm_create).grid(row=5, column=1, sticky="w", pady=6)
 
         # ── LV vergrößern ─────────────────────────────────────────────────
@@ -541,14 +545,14 @@ class AdvancedTabs:
         ttk.Button(ef, text="▶ Vergrößern",
                    command=self._lvm_extend).pack(anchor="w", pady=4)
 
-        lf = ttk.LabelFrame(p, text=" Ausgabe ", padding=4)
+        lf = ttk.LabelFrame(p, text=f" {_T('lbl_output')} ", padding=4)
         lf.pack(fill="both", expand=True)
         self._lvm_log = self._make_log(lf)
         self._lvm_log.pack(fill="both", expand=True)
         bf = tk.Frame(p, bg=T["bg"]); bf.pack(fill="x", pady=(4, 0))
-        ttk.Button(bf, text="🗑 Leeren",
+        ttk.Button(bf, text=_T("btn_clear"),
                    command=lambda: self._log_clear(self._lvm_log)).pack(side="left")
-        ttk.Button(bf, text="📋 Kopieren",
+        ttk.Button(bf, text=_T("btn_copy"),
                    command=lambda: self._log_copy(self._lvm_log)).pack(side="left", padx=6)
 
     def _lvm_status(self):
@@ -730,17 +734,17 @@ class AdvancedTabs:
         ), bg=T["bg"], fg=T["fg_dim"], font=("Arial", 8)).pack(anchor="w", pady=(0, 4))
 
         btns = tk.Frame(cf, bg=T["bg"]); btns.pack(fill="x", pady=4)
-        ttk.Button(btns, text="▶ RAID erstellen", style="Accent.TButton",
+        ttk.Button(btns, text="⚠️ RAID erstellen", style="Danger.TButton",
                    command=self._raid_create).pack(side="left", padx=(0, 8))
         ttk.Button(btns, text="⏹ RAID stoppen", style="Danger.TButton",
                    command=self._raid_stop).pack(side="left")
 
-        lf = ttk.LabelFrame(p, text=" Ausgabe ", padding=4)
+        lf = ttk.LabelFrame(p, text=f" {_T('lbl_output')} ", padding=4)
         lf.pack(fill="both", expand=True)
         self._raid_log = self._make_log(lf)
         self._raid_log.pack(fill="both", expand=True)
         bf = tk.Frame(p, bg=T["bg"]); bf.pack(fill="x", pady=(4, 0))
-        ttk.Button(bf, text="🗑 Leeren",
+        ttk.Button(bf, text=_T("btn_clear"),
                    command=lambda: self._log_clear(self._raid_log)).pack(side="left")
 
     def _raid_mdstat(self):
@@ -797,8 +801,8 @@ class AdvancedTabs:
         self._boot_grub_cb.pack(side="left", padx=(0, 4))
         ttk.Button(gr, text="🔄", width=3,
                    command=lambda: self._disk_refresh(self._boot_grub_cb)).pack(side="left")
-        ttk.Button(gf, text="🔧 GRUB installieren",
-                   style="Accent.TButton",
+        ttk.Button(gf, text="⚠️ GRUB installieren",
+                   style="Danger.TButton",
                    command=self._boot_grub_install).pack(anchor="w", pady=4)
 
         # ── TestDisk ──────────────────────────────────────────────────────
@@ -838,7 +842,7 @@ class AdvancedTabs:
             tk.Label(mf, text="ms-sys nicht installiert.\nsudo apt install ms-sys",
                      bg=T["bg"], fg=T["fg_dim"], font=("Arial", 9)).pack(anchor="w")
 
-        lf = ttk.LabelFrame(p, text=" Ausgabe ", padding=4)
+        lf = ttk.LabelFrame(p, text=f" {_T('lbl_output')} ", padding=4)
         lf.pack(fill="both", expand=True)
         self._boot_log = self._make_log(lf, height=8)
         self._boot_log.pack(fill="both", expand=True)

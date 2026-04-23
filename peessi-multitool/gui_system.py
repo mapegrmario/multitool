@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Peeßi's System Multitool v4.1
+Peeßi's System Multitool v4.2
 Modul: gui_system.py  –  Alle nicht-Laufwerks-Tabs:
   Dashboard, System (Pflege/Optimierer/Prozesse/Dienste/Boot/BIOS/Update-Shutdown),
   Netzwerk, Logs & Diagnose, Einstellungen, Über
@@ -19,6 +19,10 @@ import threading
 import subprocess
 import webbrowser
 import tkinter as tk
+try:
+    from i18n import T as _T
+except ImportError:
+    def _T(key,**kw): return key
 from tkinter import ttk, messagebox, filedialog, simpledialog, scrolledtext
 from pathlib import Path
 from typing import List, Optional
@@ -469,7 +473,7 @@ class SystemTab(GuiBase):
         opt_cmd = f"bash \'{_script}\'"
 
         # Gemeinsames Log für beide Aktionen
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=6)
         log_f.pack(fill="both", expand=True)
         log_w = self.make_log_widget(log_f, height=18)
         log_w.pack(fill="both", expand=True)
@@ -484,9 +488,9 @@ class SystemTab(GuiBase):
                    style="Accent.TButton",
                    command=lambda: self.run_shell_async(opt_cmd, log_w)
                    ).pack(side="left", padx=(0, 8))
-        ttk.Button(btn_f, text="🗑 Leeren",
+        ttk.Button(btn_f, text=_T("btn_clear"),
                    command=lambda: self.clear_log(log_w)).pack(side="left", padx=(0,4))
-        ttk.Button(btn_f, text="📋 Kopieren",
+        ttk.Button(btn_f, text=_T("btn_copy"),
                    command=lambda: self.copy_log(log_w)).pack(side="left")
 
 
@@ -511,7 +515,7 @@ class SystemTab(GuiBase):
         ttk.Button(btn_f, text="🔄 Status",
                    command=self._boot_refresh).pack(side='left', padx=4)
 
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=8)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=8)
         log_f.pack(fill='both', expand=True)
         self.boot_log = self.make_log_widget(log_f, height=18)
         self.boot_log.pack(fill='both', expand=True)
@@ -635,7 +639,7 @@ class SystemTab(GuiBase):
         sel_f.pack(fill="x", pady=(0, 8))
 
         self._bios_sel_lbl = tk.Label(sel_f,
-                                       text="→ Eintrag in der Tabelle anklicken",
+                                       text=_T("bios_select_hint"),
                                        bg=T["bg"], fg=T["fg_dim"],
                                        font=("Arial", 9, "italic"))
         self._bios_sel_lbl.pack(anchor="w", pady=(0, 6))
@@ -687,18 +691,18 @@ class SystemTab(GuiBase):
         row3 = tk.Frame(cfg_f, bg=T["bg"]); row3.pack(fill="x", pady=2)
         tk.Label(row3, text="Boot-Menü aufräumen:", bg=T["bg"], fg=T["fg"],
                  font=("Arial", 9), width=18, anchor="w").pack(side="left")
-        ttk.Button(row3, text="🧹 Veraltete Einträge löschen",
+        ttk.Button(row3, text=_T("bios_cleanup"),
                    command=self._bios_cleanup).pack(side="left")
 
         # ── Kompaktes Log ─────────────────────────────────────────────────
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=6)
         log_f.pack(fill="both", expand=True)
         self.bios_log = self.make_log_widget(log_f, height=6)
         self.bios_log.pack(fill="both", expand=True)
         lbf = tk.Frame(pane, bg=T["bg"]); lbf.pack(fill="x", pady=(4,0))
-        ttk.Button(lbf, text="🗑 Leeren",
+        ttk.Button(lbf, text=_T("btn_clear"),
                    command=lambda: self.clear_log(self.bios_log)).pack(side="left")
-        ttk.Button(lbf, text="📋 Kopieren",
+        ttk.Button(lbf, text=_T("btn_copy"),
                    command=lambda: self.copy_log(self.bios_log)).pack(side="left", padx=6)
 
         self._bios_refresh_info()
@@ -763,7 +767,7 @@ class SystemTab(GuiBase):
                 btn.config(state="normal")
         else:
             self._bios_sel_lbl.config(
-                text="→ Eintrag in der Tabelle anklicken",
+                text=_T("bios_select_hint"),
                 fg=self.theme["fg_dim"])
             for btn in (self._bios_del_btn, self._bios_toggle_btn, self._bios_usb_btn):
                 btn.config(state="disabled")
@@ -954,7 +958,7 @@ class SystemTab(GuiBase):
                                       bg=T["bg"], fg=T["fg"], font=('Arial', 12, 'bold'))
         self.upshut_status.pack(anchor='w', pady=(0, 8))
 
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=8)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=8)
         log_f.pack(fill='both', expand=True)
         self.upshut_log = self.make_log_widget(log_f, height=16)
         self.upshut_log.pack(fill='both', expand=True)
@@ -1167,7 +1171,7 @@ sync; sleep 1; systemctl poweroff
                    command=self._einmal_refresh).pack(side='left', padx=4)
 
         # Log
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=6)
         log_f.pack(fill='x', pady=(8, 0))
         self.einmal_log = self.make_log_widget(log_f, height=4)
         self.einmal_log.pack(fill='both', expand=True)
@@ -1598,7 +1602,7 @@ sync; sleep 1; systemctl poweroff
         ), bg=T["bg"], fg=T["fg_dim"], font=('Arial', 9)).pack(anchor='w')
 
         # ── Ausgabe-Log ───────────────────────────────────────────────────
-        log_f = ttk.LabelFrame(inner, text=" Ausgabe ", padding=6)
+        log_f = ttk.LabelFrame(inner, text=f" {_T('lbl_output')} ", padding=6)
         log_f.pack(fill='both', expand=True, pady=(0, 8))
         self._eggs_iso_log = self.make_log_widget(log_f, height=16)
         self._eggs_iso_log.pack(fill='both', expand=True)
@@ -1614,7 +1618,7 @@ sync; sleep 1; systemctl poweroff
         self._eggs_iso_run_btn.pack(side='left', padx=(0, 6))
         ttk.Button(btn_f, text="📋 Log kopieren",
                    command=lambda: self.copy_log(self._eggs_iso_log)).pack(side='left')
-        ttk.Button(btn_f, text="🗑 Leeren",
+        ttk.Button(btn_f, text=_T("btn_clear"),
                    command=lambda: self.clear_log(self._eggs_iso_log)).pack(side='left', padx=6)
 
     def _eggs_iso_dad(self):
@@ -1814,7 +1818,7 @@ class NetworkTab(GuiBase):
         btn_f.pack(fill='x', pady=(6, 0))
         ttk.Button(btn_f, text="🔄 Aktualisieren",
                    command=self._refresh_connections).pack(side='left')
-        ttk.Button(btn_f, text="📋 Kopieren",
+        ttk.Button(btn_f, text=_T("btn_copy"),
                    command=self._copy_connections).pack(side='left', padx=6)
 
         # Auto-Refresh: einmalig 800ms nach Programmstart
@@ -1990,7 +1994,7 @@ class NetworkTab(GuiBase):
         wsb.pack(side='right', fill='y')
 
         # Log
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=6)
         log_f.pack(fill='x', pady=(0, 8))
         self.wlan_log = self.make_log_widget(log_f, height=4)
         self.wlan_log.pack(fill='both', expand=True)
@@ -2359,9 +2363,9 @@ class LogsTab(GuiBase):
         self.diag_btn.pack(side='right', padx=4)
         ttk.Button(btn_f, text="📂 HTML öffnen",
                    command=self._open_diag_html).pack(side='right', padx=4)
-        ttk.Button(btn_f, text="📋 Kopieren",
+        ttk.Button(btn_f, text=_T("btn_copy"),
                    command=lambda: self.copy_log(self.diag_log)).pack(side='left')
-        ttk.Button(btn_f, text="🗑 Leeren",
+        ttk.Button(btn_f, text=_T("btn_clear"),
                    command=lambda: self.clear_log(self.diag_log)).pack(side='left', padx=4)
 
     def _run_diagnose(self):
@@ -2706,7 +2710,7 @@ class SettingsTab(GuiBase):
 
         btn_row = tk.Frame(pane, bg=T["bg"])
         btn_row.pack(anchor='w', pady=(0,8))
-        ttk.Button(btn_row, text="💾 Einstellungen speichern",
+        ttk.Button(btn_row, text=_T("btn_save") + " " + _T("set_save").split()[-1],
                    style='Accent.TButton', command=self._save).pack(side='left', padx=(0, 8))
         ttk.Button(btn_row, text="↩️ Auf Standard zurücksetzen",
                    command=self._reset).pack(side='left')

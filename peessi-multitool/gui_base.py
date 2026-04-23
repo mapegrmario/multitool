@@ -12,6 +12,21 @@ import shutil
 import subprocess
 import threading
 import tkinter as tk
+
+# i18n: optionaler Import – bei Fehler Fallback auf Deutsch
+try:
+    from i18n import T
+except ImportError:
+    def T(key: str, **kw) -> str:
+        # Fallback-Tabelle (häufigste Strings)
+        _fb = {
+            "btn_refresh": "🔄 Aktualisieren", "btn_copy": "📋 Kopieren",
+            "btn_clear": "🗑 Leeren",          "btn_stop": "⏹ Stopp",
+            "btn_save": "💾 Speichern",         "lbl_output": "Ausgabe",
+            "lbl_device": "Laufwerk",           "dlg_done": "✅ Fertig.",
+            "dlg_error": "❌ Fehler",           "lbl_status": "Status",
+        }
+        return _fb.get(key, f"[{key}]")
 from tkinter import ttk, messagebox, scrolledtext
 from typing import List, Optional
 
@@ -321,9 +336,9 @@ class GuiBase:
 
         run_btn = ttk.Button(btn_f, text=f"▶ {btn_label}", style='Accent.TButton')
         run_btn.pack(side='right', padx=4)
-        ttk.Button(btn_f, text="📋 Kopieren",
+        ttk.Button(btn_f, text=_T("btn_copy"),
                    command=lambda: self.copy_log(log_w)).pack(side='right', padx=4)
-        ttk.Button(btn_f, text="🗑 Leeren",
+        ttk.Button(btn_f, text=_T("btn_clear"),
                    command=lambda: self.clear_log(log_w)).pack(side='right', padx=4)
 
         run_btn.config(command=lambda: self.run_shell_async(command, log_w, run_btn))

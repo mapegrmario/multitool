@@ -15,6 +15,10 @@ import sqlite3
 import subprocess
 import threading
 import tkinter as tk
+try:
+    from i18n import T as _T
+except ImportError:
+    def _T(key,**kw): return key
 from tkinter import ttk, messagebox, simpledialog, filedialog, scrolledtext
 from typing import List, Optional
 
@@ -171,7 +175,7 @@ class DrivesTabs(GuiBase):
         self.rec_abort_btn = ttk.Button(btn_f, text="⏹ Abbruch",
                                         state='disabled', command=self._abort_recovery)
         self.rec_abort_btn.pack(side='right', padx=4)
-        ttk.Button(btn_f, text="📋 Kopieren",
+        ttk.Button(btn_f, text=_T("btn_copy"),
                    command=lambda: self.copy_log(self.rec_log)).pack(side='left')
 
     def _confirm_recovery(self):
@@ -336,7 +340,7 @@ class DrivesTabs(GuiBase):
         self.wipe_stop_btn.pack(side='left', padx=4)
         ttk.Button(btn_f, text="\U0001f504 Aktualisieren",
                    command=self.app.refresh_drives).pack(side='left', padx=4)
-        ttk.Button(btn_f, text="nwipe (Terminal)",
+        ttk.Button(btn_f, text="⚠️ nwipe (Terminal)", style="Danger.TButton",
                    command=self._wipe_nwipe).pack(side='left', padx=4)
         ttk.Button(btn_f, text="\U0001f4cb Log kopieren",
                    command=lambda: self.copy_log(self.wipe_log)).pack(side='right', padx=4)
@@ -1272,7 +1276,7 @@ class DrivesTabs(GuiBase):
         ttk.Checkbutton(opt_f, text="Nach dem Klonen verifizieren (cmp – dauert länger)",
                         variable=self.iso_clone_verify_var).pack(anchor='w')
 
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=6)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=6)
         log_f.pack(fill='both', expand=True)
         self.iso_clone_log = self.make_log_widget(log_f, height=10)
         self.iso_clone_log.pack(fill='both', expand=True)
@@ -1592,7 +1596,7 @@ class DrivesTabs(GuiBase):
         self.part_cb  = ttk.Combobox(part_f, textvariable=self.part_var,
                                       state='readonly', width=65)
         self.part_cb.pack(fill='x', pady=(0, 6))
-        ttk.Button(part_f, text="🔄 Aktualisieren",
+        ttk.Button(part_f, text=_T("btn_refresh"),
                    command=self._refresh_partitions).pack(anchor='w')
 
         mnt_f = ttk.LabelFrame(pane, text=" Einhängepunkt ", padding=8)
@@ -1610,7 +1614,7 @@ class DrivesTabs(GuiBase):
         self.part_label_var.trace_add('write', lambda *_: self.part_mnt_hint.config(
             text=f"→ /media/{ORIGINAL_USER}/{self.part_label_var.get()}"))
 
-        log_f = ttk.LabelFrame(pane, text=" Ausgabe ", padding=8)
+        log_f = ttk.LabelFrame(pane, text=f" {_T('lbl_output')} ", padding=8)
         log_f.pack(fill='both', expand=True)
         self.part_log = self.make_log_widget(log_f, height=8)
         self.part_log.pack(fill='both', expand=True)
