@@ -151,6 +151,12 @@ _log = _logging.getLogger("peessi-multitool")
 class App:
     def __init__(self):
         self.settings = load_settings()
+        # Sprache laden bevor UI gebaut wird
+        try:
+            from i18n import set_lang
+            set_lang(self.settings.get('language', 'de'))
+        except Exception:
+            pass
         self.theme    = THEMES[self.settings.get("theme", "light")]
 
         # Kern-Objekte

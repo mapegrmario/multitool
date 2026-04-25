@@ -63,7 +63,6 @@ class DrivesTabs(GuiBase):
         self._build_recovery_tab(nb)
         self._build_wipe_tab(nb)
         self._build_iso_tab(nb)
-        self._build_usb_clone_tab(nb)
         self._build_partition_tab(nb)
         self._build_drive_health_tab(nb)
 
@@ -1336,90 +1335,6 @@ class DrivesTabs(GuiBase):
                 self.root.after(0, lambda: self.iso_clone_btn.config(state='normal'))
         import threading as _th
         _th.Thread(target=worker, daemon=True).start()
-
-    def _build_usb_clone_tab(self, nb):
-        T   = self.theme
-        _, pane = self.make_scrollable_tab(nb, "📋 USB-Klon")
-        pane = tk.Frame(pane, bg=T["bg"])
-        pane.pack(fill='both', expand=True, padx=12, pady=10)
-
-        desc = ttk.LabelFrame(pane, text=" Beschreibung ", padding=10)
-        desc.pack(fill='x', pady=(0, 8))
-        tk.Label(desc, text=(
-            "Klont einen USB-Stick 1:1 auf einen anderen Stick.\n"
-            "Quell-Stick wird byte-genau auf den Ziel-Stick kopiert (dd).\n"
-            "Optional: Verifikation nach dem Klonen (SHA256-Vergleich).\n"
-            "⚠️  Der Ziel-Stick muss mindestens so groß sein wie der Quell-Stick!\n"
-            "⚠️  Alle Daten auf dem Ziel-Stick werden unwiderruflich überschrieben!"
-        ), bg=T["bg"], fg=T["fg"], font=('Arial', 9), justify='left').pack(anchor='w')
-
-        # Quell-Gerät
-        src_f = ttk.LabelFrame(pane, text=" Quell-Stick (Quelle) ", padding=8)
-        src_f.pack(fill='x', pady=(0, 6))
-        src_row = tk.Frame(src_f, bg=T["bg"])
-        src_row.pack(fill='x')
-        self.clone_src_var = tk.StringVar()
-        self.clone_src_cb  = ttk.Combobox(src_row, textvariable=self.clone_src_var,
-                                           state='readonly', width=58)
-        self.clone_src_cb.pack(side='left', padx=(0, 8))
-        ttk.Button(src_row, text="🔄",
-                   command=self._update_clone_combos).pack(side='left')
-        tk.Label(src_f, text="ℹ️  Systemlaufwerke werden nicht angezeigt.",
-                 bg=T["bg"], fg=T["fg_dim"], font=('Arial', 8)).pack(anchor='w', pady=(4, 0))
-
-        # Ziel-Gerät
-        dst_f = ttk.LabelFrame(pane, text=" Ziel-Stick (Kopie wird hier erstellt) ", padding=8)
-        dst_f.pack(fill='x', pady=(0, 6))
-        dst_row = tk.Frame(dst_f, bg=T["bg"])
-        dst_row.pack(fill='x')
-        self.clone_dst_var = tk.StringVar()
-        self.clone_dst_cb  = ttk.Combobox(dst_row, textvariable=self.clone_dst_var,
-                                           state='readonly', width=58)
-        self.clone_dst_cb.pack(side='left', padx=(0, 8))
-        tk.Label(dst_f,
-                 text="⚠️  Quell- und Ziel-Stick dürfen NICHT identisch sein!",
-                 bg=T["bg"], fg=T["warning"] if "warning" in T else "#e67e22",
-                 font=('Arial', 8)).pack(anchor='w', pady=(4, 0))
-
-        # Optionen
-        opt_f = ttk.LabelFrame(pane, text=" Optionen ", padding=8)
-        opt_f.pack(fill='x', pady=(0, 6))
-        self.clone_verify_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(opt_f,
-            text="Nach dem Klonen verifizieren (SHA256 Quell- vs. Ziel-Stick)",
-            variable=self.clone_verify_var).pack(anchor='w')
-        self.clone_bs_var = tk.StringVar(value="4M")
-        bs_row = tk.Frame(opt_f, bg=T["bg"])
-        bs_row.pack(anchor='w', pady=(4, 0))
-        tk.Label(bs_row, text="Block-Größe (dd bs=):",
-                 bg=T["bg"], fg=T["fg"], font=('Arial', 9)).pack(side='left', padx=(0, 6))
-        ttk.Combobox(bs_row, textvariable=self.clone_bs_var,
-                     values=["1M", "4M", "8M", "16M", "64M"],
-                     state='readonly', width=8).pack(side='left')
-        tk.Label(bs_row, text="(4M empfohlen)",
-                 bg=T["bg"], fg=T["fg_dim"], font=('Arial', 8)).pack(side='left', padx=6)
-
-        # Fortschritt
-        prog_f = ttk.LabelFrame(pane, text=" Fortschritt ", padding=8)
-        prog_f.pack(fill='both', expand=True)
-        self.clone_pct_var   = tk.DoubleVar()
-        self.clone_pct_label = tk.Label(prog_f, text="",
-                                        bg=T["bg"], fg=T["fg_dim"], font=('Arial', 9))
-        self.clone_pct_label.pack(anchor='w')
-        ttk.Progressbar(prog_f, variable=self.clone_pct_var, maximum=100
-                        ).pack(fill='x', pady=(0, 6))
-        self.clone_log = self.make_log_widget(prog_f, height=8)
-        self.clone_log.pack(fill='both', expand=True)
-
-        # Buttons
-        btn_f = tk.Frame(pane, bg=T["bg"])
-        btn_f.pack(fill='x', pady=(8, 0))
-        ttk.Button(btn_f, text="📋 Sticks klonen", style='Danger.TButton',
-                   command=self._start_clone).pack(side='right', padx=4)
-        ttk.Button(btn_f, text="📋 Log kopieren",
-                   command=lambda: self.copy_log(self.clone_log)).pack(side='left', padx=4)
-
-        self._update_clone_combos()
 
     def _start_clone(self):
         src_sel = self.clone_src_var.get()

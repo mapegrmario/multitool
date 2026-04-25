@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# Peeßi's System Multitool v4.1 – VOLLSTÄNDIGE SYSTEM-ANALYSE
+# Peeßi's System Multitool v4.2 – VOLLSTÄNDIGE SYSTEM-ANALYSE
 # 14 Prüfbereiche | Erstellt: ~/peessi-analyse-DATUM.log + peessi-analyse-kurz.txt
 # Aufruf: sudo bash ~/peessi-analyse.sh
 # =============================================================================
@@ -38,11 +38,11 @@ HEAD() {
 clear
 echo -e "${BOLD}${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════╗"
-echo "║   Peeßi's System Multitool v4.1 – SYSTEM-ANALYSE           ║"
+echo "║   Peeßi's System Multitool v4.2 – SYSTEM-ANALYSE           ║"
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo -e "${RESET}"
 _log_raw "=============================================================="
-_log_raw "  PEEESSI'S SYSTEM MULTITOOL v4.1 – SYSTEM-ANALYSE"
+_log_raw "  PEEESSI'S SYSTEM MULTITOOL v4.2 – SYSTEM-ANALYSE"
 _log_raw "  Datum: $(date '+%d.%m.%Y %H:%M:%S') | Host: $(hostname) | User: $(whoami)"
 _log_raw "=============================================================="
 echo "  Datum: $(date '+%d.%m.%Y %H:%M:%S')  |  Log: ${LOG_FILE}"
@@ -80,18 +80,18 @@ HEAD "2  PYTHON-DATEIEN: ZEILEN, MD5, SYNTAX"
 # ══════════════════════════════════════════════════════════════════════════════
 
 declare -A REF_LINES=(
-    ["main.py"]=382         ["config.py"]=99        ["models.py"]=217
+    ["main.py"]=467         ["config.py"]=107        ["models.py"]=217
     ["database.py"]=87      ["security.py"]=58       ["smart_engine.py"]=160
     ["wipe_engine.py"]=171  ["recovery_engine.py"]=202
-    ["gui_base.py"]=270     ["gui_drives.py"]=1795   ["gui_system.py"]=2889
+    ["gui_base.py"]=345     ["gui_drives.py"]=1714   ["gui_system.py"]=2910
 )
 declare -A REF_MD5=(
-    ["main.py"]="bc2facfe7c0f"      ["config.py"]="d65bf2cb34ea"
+    ["main.py"]="33a919e37021"      ["config.py"]="e0ec34bc0359"
     ["models.py"]="ddd148b977ff"    ["database.py"]="b2a09db49aa8"
     ["security.py"]="06c95a93c131"  ["smart_engine.py"]="a497e9f96f2d"
     ["wipe_engine.py"]="b91b8acb324b" ["recovery_engine.py"]="f07773856c2a"
-    ["gui_base.py"]="ad07e3bfbdef"  ["gui_drives.py"]="6fcf2e5786b7"
-    ["gui_system.py"]="c707a5291310"
+    ["gui_base.py"]="74ddbb40aaad"  ["gui_drives.py"]="16dcec32c34b"
+    ["gui_system.py"]="caa56b047c1f"
 )
 
 printf "  %-22s %7s %7s  %-14s  %s\n" "Datei" "Ref-Z" "Ist-Z" "MD5(12)" "Status"
@@ -129,7 +129,7 @@ done
 
 echo ""
 INFO "Extra-Dateien:"
-declare -A EXTRA_MIN=( ["gui_grub.py"]=5000 ["gui_drive_health.py"]=5000 ["i18n.py"]=5000 ["gui_advanced.py"]=45389
+declare -A EXTRA_MIN=( ["gui_grub.py"]=5000 ["gui_drive_health.py"]=5000 ["i18n.py"]=5000 ["gui_advanced.py"]=42152
     ["optimizer.sh"]=500 ["eggs-iso-tool.sh"]=1000 ["drive-health-tool.sh"]=1000 )
 for fn in "${!EXTRA_MIN[@]}"; do
     fp="${INSTALL_DIR}/${fn}"
@@ -157,12 +157,12 @@ REQUIRED = {
     "gui_drives.py": {"DrivesTabs": [
         "_build","refresh_drives","_build_recovery_tab","_build_wipe_tab",
         "_build_iso_tab","_build_iso_clone_subtab","_start_iso_clone",
-        "_build_usb_clone_tab","_build_partition_tab","_build_drive_health_tab",
+        "_build_partition_tab","_build_drive_health_tab",
         "_update_iso_targets","_start_iso_write","_start_clone","_update_wipe_list",
     ]},
     "gui_system.py": {
         "DashboardTab": ["_build","_update_system_cards","_update_drive_table"],
-        "SystemTab":    ["_build","_build_cleanup","_build_optimizer","_build_boot",
+        "SystemTab":    ["_build","_build_cleanup","_build_boot",
                         "_build_bios","_build_update_shutdown","_build_einmal_starter",
                         "_build_eggs_iso","_build_grub_tab","_eggs_iso_start","_eggs_iso_dad"],
         "NetworkTab":   ["_build","_build_interfaces","_build_ping","_build_connections",
@@ -513,8 +513,12 @@ done
 if [[ -d "${INSTALL_DIR}/grub-control-center" ]]; then
     GCC_OK=0; GCC_ERR=0
     while IFS= read -r sh; do
-        bash -n "${sh}" 2>/dev/null && ((GCC_OK++)) \
-            || { ((GCC_ERR++)); FAIL "grub-cc Syntaxfehler: $(basename "${sh}")"; }
+        if bash -n "${sh}" 2>/dev/null; then
+            GCC_OK=$((GCC_OK+1))
+        else
+            GCC_ERR=$((GCC_ERR+1))
+            FAIL "grub-cc Syntaxfehler: $(basename "${sh}")"
+        fi
     done < <(find "${INSTALL_DIR}/grub-control-center" -name "*.sh")
     [[ ${GCC_ERR} -eq 0 ]] && OK "grub-control-center: ${GCC_OK} Scripts Syntax OK"
 fi
@@ -577,7 +581,7 @@ _log_raw ""; _log_raw "ZUSAMMENFASSUNG: ${PASSED} OK / ${ERRORS} Fehler / ${WARN
 echo -e "\n  ${BOLD}Reparatur:${RESET} sudo bash install-peessi-multitool.sh"
 
 {
-echo "Peeßi's System Multitool v4.1 – Analyse-Kurzfassung"
+echo "Peeßi's System Multitool v4.2 – Analyse-Kurzfassung"
 echo "$(date '+%d.%m.%Y %H:%M:%S')  |  $(hostname)  |  $(whoami)"
 echo "================================================================"
 echo "ERGEBNIS: ${PASSED} OK / ${ERRORS} Fehler / ${WARNINGS} Warnungen"

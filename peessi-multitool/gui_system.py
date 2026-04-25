@@ -625,7 +625,7 @@ class SystemTab(GuiBase):
         # ── Schnell-Aktionen (immer sichtbar) ─────────────────────────────
         qa_f = tk.Frame(pane, bg=T["bg"])
         qa_f.pack(fill="x", pady=(0, 8))
-        ttk.Button(qa_f, text="🔄 Aktualisieren",
+        ttk.Button(qa_f, text=_T("btn_refresh"),
                    command=self._bios_refresh_info).pack(side="left", padx=(0,6))
         ttk.Button(qa_f, text="🔧 Ins BIOS neu starten",
                    command=self._bios_reboot_bios).pack(side="left", padx=(0,6))
@@ -1759,7 +1759,7 @@ class NetworkTab(GuiBase):
         self.iface_tree.pack(fill='x')
         self.iface_detail = self.make_log_widget(pane, height=8)
         self.iface_detail.pack(fill='both', expand=True, pady=(8, 0))
-        ttk.Button(pane, text="🔄 Aktualisieren",
+        ttk.Button(pane, text=_T("btn_refresh"),
                    command=self._refresh_interfaces).pack(anchor='w', pady=(6, 0))
 
     def _build_ping(self, nb):
@@ -1816,7 +1816,7 @@ class NetworkTab(GuiBase):
 
         btn_f = tk.Frame(pane, bg=T["bg"])
         btn_f.pack(fill='x', pady=(6, 0))
-        ttk.Button(btn_f, text="🔄 Aktualisieren",
+        ttk.Button(btn_f, text=_T("btn_refresh"),
                    command=self._refresh_connections).pack(side='left')
         ttk.Button(btn_f, text=_T("btn_copy"),
                    command=self._copy_connections).pack(side='left', padx=6)
@@ -2718,7 +2718,7 @@ class SettingsTab(GuiBase):
     def _save(self):
         self.settings.update({
             "theme":               self._set_theme_var.get(),
-            "language":            self._lang_var.get(),
+            "language":            getattr(self, "_lang_var", type("", (), {"get": lambda s: "de"})()).get(),
             "font_size":           self._set_font_var.get(),
             "ui_font_size":        self._set_ui_font_var.get(),
             "default_wipe_method": self._set_wipe_var.get(),
@@ -2731,6 +2731,23 @@ class SettingsTab(GuiBase):
             "custom_bg":           self._set_bg_var.get().strip(),
         })
         save_settings(self.settings)
+        # Neustart-Hinweis bei Sprachwechsel
+        if hasattr(self, '_lang_var'):
+            new_lang = self._lang_var.get()
+            lang_name = "English" if new_lang == "en" else "Deutsch"
+            try:
+                from i18n import set_lang
+                set_lang(new_lang)
+            except Exception:
+                pass
+            messagebox.showinfo(
+                "Einstellungen gespeichert / Settings saved",
+                f"Sprache: {lang_name}\n"
+                "Bitte das Programm neu starten damit alle\n"
+                "Texte in der gewählten Sprache erscheinen.\n\n"
+                f"Language: {lang_name}\n"
+                "Please restart the program so all\n"
+                "texts appear in the selected language.")
         # Theme neu laden und ggf. Custom-Farben einsetzen
         new_theme = self._set_theme_var.get()
         self.app.theme = dict(THEMES[new_theme])  # Kopie!

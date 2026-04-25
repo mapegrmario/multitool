@@ -170,21 +170,6 @@ _STRINGS: dict[str, dict[str, str]] = {
     "about_contact":      {"de": "✉️  Kontakt",              "en": "✉️  Contact"},
     "about_mail_btn":     {"de": "📧 E-Mail senden",         "en": "📧 Send e-mail"},
 
-    # ── Zusätzliche Strings (v4.2) ────────────────────────────────────
-    "tab_optimizer":      {"de": "Optimierer",              "en": "Optimizer"},
-    "btn_run":            {"de": "▶ Ausführen",              "en": "▶ Run"},
-    "lbl_filesystem":     {"de": "Dateisystem",             "en": "Filesystem"},
-    "lbl_mounted":        {"de": "Eingehängt",              "en": "Mounted"},
-    "msg_restart_needed": {"de": "Neustart erforderlich",   "en": "Restart required"},
-    "msg_no_drives":      {"de": "Keine Laufwerke erkannt", "en": "No drives found"},
-    "msg_select_drive":   {"de": "Bitte Laufwerk wählen.",  "en": "Please select a drive."},
-    "msg_success":        {"de": "✅ Erfolgreich.",          "en": "✅ Success."},
-    "msg_running":        {"de": "⏳ Läuft…",               "en": "⏳ Running…"},
-    "msg_ready":          {"de": "✅ Bereit",                "en": "✅ Ready"},
-    "btn_start_cleanup":  {"de": "🧹 Systempflege starten", "en": "🧹 Start cleanup"},
-    "btn_optimize":       {"de": "⚡ Optimieren",            "en": "⚡ Optimize"},
-    "btn_reboot_bios":    {"de": "🔧 Ins BIOS neu starten", "en": "🔧 Reboot to BIOS"},
-
     # ── Systemwarnungen ──────────────────────────────────────────────────
     "warn_root_needed":   {"de": "⚠️ Benötigt Root-Rechte.", "en": "⚠️ Requires root privileges."},
     "warn_no_efi":        {"de": "efibootmgr nicht installiert oder kein EFI-System.",

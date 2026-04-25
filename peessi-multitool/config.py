@@ -71,6 +71,7 @@ THEMES = {
 DEFAULT_SETTINGS = {
     "theme": "light", "font_size": 10,
     "ui_font_size": 10,
+    "language": "de",
     "default_wipe_method": "quick", "smart_interval_days": 1,
     "notifications": True, "backup_target": str(USER_HOME / "Backups"),
     "log_retention_days": 30,
@@ -85,10 +86,17 @@ def load_settings() -> dict:
                 data = json.load(f)
                 merged = DEFAULT_SETTINGS.copy()
                 merged.update(data)
-                return merged
+        else:
+            merged = DEFAULT_SETTINGS.copy()
+    except Exception:
+        merged = DEFAULT_SETTINGS.copy()
+    # Sprache sofort aktivieren
+    try:
+        from i18n import set_lang
+        set_lang(merged.get("language", "de"))
     except Exception:
         pass
-    return DEFAULT_SETTINGS.copy()
+    return merged
 
 def save_settings(settings: dict):
     try:
